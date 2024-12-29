@@ -20,6 +20,9 @@ class GerritConfig(config.ServiceConfig):
     query: str = 'is:open+is:reviewer'
     ignore_user_comments: config.ConfigList = config.ConfigList([])
 
+    only_if_assigned: config.UnsupportedOption[str] = ''
+    also_unassigned: config.UnsupportedOption[bool] = False
+
 
 class GerritIssue(Issue):
     SUMMARY = 'gerritsummary'
