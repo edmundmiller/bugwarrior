@@ -187,7 +187,7 @@ class LogseqIssue(Issue):
         )
         # and this adds the #[[multi word]] formatted tags
         tags.extend(re.findall(
-            r"(#[" + self.config.char_open_link + r"].*[" + self.config.char_close_link + r"])",
+            r"(#[" + self.config.char_open_link + r"].*?[" + self.config.char_close_link + r"])",
             self.get_formatted_title()
         ))
         # compress format to single words and strip leading `#`
