@@ -40,6 +40,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
     }
 
     test_extra = {
+        "baseURI": "logseq://graph/Test?block-id=",
         "graph": "Test",
     }
 
@@ -68,7 +69,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             issue.UUID: self.test_record["uuid"],
             issue.STATE: self.test_record["marker"],
             issue.TITLE: "DOING Do something #【Test tag】 #【TestTag】 #TestTag",
-            issue.URI: "logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
+            issue.URI: self.test_extra["baseURI"] + self.test_record["uuid"],
         }
 
         actual = issue.to_taskwarrior()
@@ -84,7 +85,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             "annotations": [],
             "description": f"(bw)Is#{self.test_record['id']}"
             + " - DOING Do something #【Test tag】 #【TestTag】 #TestTag"
-            + " .. logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
+            + " .. " + self.test_extra["baseURI"] + self.test_record["uuid"],
             "due": None,
             "scheduled": None,
             "wait": None,
@@ -96,7 +97,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             issue.UUID: self.test_record["uuid"],
             issue.STATE: self.test_record["marker"],
             issue.TITLE: "DOING Do something #【Test tag】 #【TestTag】 #TestTag",
-            issue.URI: "logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
+            issue.URI: self.test_extra["baseURI"] + self.test_record["uuid"],
         }
 
         self.assertEqual(TaskConstructor(issue).get_taskwarrior_record(), expected)
