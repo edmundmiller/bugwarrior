@@ -30,7 +30,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             {"id": 1777},
             {"id": 7070},
         ],
-        "content": "DOING [#A] Do something",
+        "content": "DOING [#A] Do something #[[Test tag]] #[[TestTag]] #TestTag",
         "properties-text-values": {"duration": '{"TODO":[0,1699562197346]}'},
         "marker": "DOING",
         "page": {"id": 7070},
@@ -63,11 +63,11 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             "status": "pending",
             "priority": "L",
             "project": self.test_extra["graph"],
-            "tags": [],
+            "tags": ['TestTag', 'Testtag', 'TestTag'],
             issue.ID: int(self.test_record["id"]),
             issue.UUID: self.test_record["uuid"],
             issue.STATE: self.test_record["marker"],
-            issue.TITLE: "DOING Do something",
+            issue.TITLE: "DOING Do something #【Test tag】 #【TestTag】 #TestTag",
             issue.URI: "logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
         }
 
@@ -83,7 +83,7 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
         expected = {
             "annotations": [],
             "description": f"(bw)Is#{self.test_record['id']}"
-            + " - DOING Do something"
+            + " - DOING Do something #【Test tag】 #【TestTag】 #TestTag"
             + " .. logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
             "due": None,
             "scheduled": None,
@@ -91,11 +91,11 @@ class TestLogseqIssue(AbstractServiceTest, ServiceTest):
             "status": "pending",
             "priority": "L",
             "project": self.test_extra["graph"],
-            "tags": [],
+            "tags": ['TestTag', 'Testtag', 'TestTag'],
             issue.ID: int(self.test_record["id"]),
             issue.UUID: self.test_record["uuid"],
             issue.STATE: self.test_record["marker"],
-            issue.TITLE: "DOING Do something",
+            issue.TITLE: "DOING Do something #【Test tag】 #【TestTag】 #TestTag",
             issue.URI: "logseq://graph/Test?block-id=66699a83-3ee0-4edc-81c6-a24c9b80bec6",
         }
 
