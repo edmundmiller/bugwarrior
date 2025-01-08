@@ -190,8 +190,8 @@ class LogseqIssue(Issue):
             r"(#[" + self.config.char_open_link + r"].*[" + self.config.char_close_link + r"])",
             self.get_formatted_title()
         ))
-        # compress format to single words
-        tags = [self._compress_tag_format(t) for t in tags]
+        # compress format to single words and strip leading `#`
+        tags = [self._compress_tag_format(t).lstrip('#') for t in tags]
         return tags
 
     # get a list of annotations from the content
