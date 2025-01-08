@@ -149,10 +149,10 @@ From the command line you can open a specific task using taskwarior task id, e.g
 Tags
 ++++
 
-LogSeq tasks with ``#tag`` style tag entries in the description are added to the Taskwarrior tags.
-Multi and single word tags using the Logseq ``#[[Tag]]`` or ``#[[Multi Word]]`` format are
-condenced to a ``#Tag`` and ``#MultiWord`` style before adding the Taskwarrior tags. The format of 
-the tag content in task desciption is unchanged.
+Logseq tasks with ``#tag`` style tag entries in the description are added to the Taskwarrior tags.
+Single- and multi-word tags using the Logseq ``#[[Tag]]`` or ``#[[Multi Word]]`` format are
+condensed to a ``Tag`` and ``MultiWord`` style before adding the Taskwarrior tags. The format of
+the tag content in the task description is unchanged.
 
 
 Troubleshooting
