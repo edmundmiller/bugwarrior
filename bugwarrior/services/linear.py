@@ -54,7 +54,7 @@ class LinearIssue(Issue):
 
     def parse_date(self, input):
         '''Parse a date, stripping microseconds'''
-        parsed = super(LinearIssue, self).parse_date(input)
+        parsed = super().parse_date(input)
         if parsed:
             parsed = parsed.replace(microsecond=0)
         return parsed
