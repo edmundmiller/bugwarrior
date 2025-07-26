@@ -19,6 +19,9 @@ The above example is the minimum required to import issues from Linear.  You
 can also feel free to use any of the configuration options described in
 :ref:`common_configuration_options`.
 
+Options
+----------
+
 .. describe:: api_token
 
     Linear offers API keys at Settings -> Security & Access -> Personal API
