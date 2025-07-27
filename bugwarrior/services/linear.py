@@ -21,6 +21,7 @@ class LinearConfig(config.ServiceConfig):
     )
     import_labels_as_tags: bool = False
     label_template: str = "{{label|replace(' ', '_')}}"
+    also_unassigned: config.UnsupportedOption[bool] = False
 
 
 class LinearIssue(Issue):
@@ -123,7 +124,7 @@ class LinearService(Service, Client):
         )
 
         filter = "{}"
-        if self.config.only_if_assigned and not self.config.also_unassigned:
+        if self.config.only_if_assigned:
             filter = '{assignee: {email: {eq: "%s"}}}' % self.config.only_if_assigned
 
         self.query = (
