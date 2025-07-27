@@ -65,7 +65,10 @@ class LinearIssue(Issue):
         modified = self.parse_date(self.record.get("updatedAt"))
         closed = self.parse_date(self.record.get("completedAt"))
 
-        # Get a value, defaulting empty results to the given default.
+        # Get a value, defaulting empty results to the given default. Some
+        # GraphQL response values, such as for `project`, are either an object
+        # or None, rather than being omitted when empty, so this allows chained
+        # traversal of such values.
         def get(v, k, default=None):
             r = v.get(k, default)
             if not r:
@@ -75,7 +78,7 @@ class LinearIssue(Issue):
         return {
             "project": re.sub(
                 r"[^a-zA-Z0-9]", "_", get(get(self.record, "project", {}), "name", "")
-            ).lower(),
+            ).lower() or None,
             "priority": self.config.default_priority,
             "annotations": get(self.extra, "annotations", []),
             "tags": self.get_tags(),

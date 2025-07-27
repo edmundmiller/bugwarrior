@@ -28,7 +28,9 @@ RESPONSE = json.loads(
                     "createdAt": "2025-07-24T17:03:04.239Z",
                     "updatedAt": "2025-07-25T17:03:04.239Z",
                     "completedAt": "2025-07-26T17:03:04.239Z",
-                    "project": null,
+                    "project": {
+                        "name": "PRJ"
+                    },
                     "labels": {},
                     "state": {
                         "name": "Done"
@@ -130,7 +132,7 @@ class TestLinearIssue(AbstractServiceTest, ServiceTest):
             2025, 7, 26, 17, 3, 4, 0, tzinfo=tzutc()
         )
         expected_output = {
-            "project": "",
+            "project": "prj",
             "priority": "M",
             "annotations": [],
             "tags": [],
@@ -160,7 +162,7 @@ class TestLinearIssue(AbstractServiceTest, ServiceTest):
             2025, 7, 24, 17, 8, 33, 0, tzinfo=tzutc()
         )
         expected_output = {
-            "project": "",
+            "project": None,
             "priority": "M",
             "annotations": [],
             "tags": ["Improvement", "Feature"],
@@ -208,7 +210,7 @@ class TestLinearIssue(AbstractServiceTest, ServiceTest):
             "linearupdated": updated_timestamp,
             "linearurl": "https://linear.app/dustins-doings/issue/DUS-5/do-stuff",
             "priority": "M",
-            "project": "",
+            "project": 'prj',
             "tags": [],
         }
         self.assertEqual(TaskConstructor(issue).get_taskwarrior_record(), expected)
