@@ -161,6 +161,10 @@ class LinearService(Service, Client):
             % filter
         )
 
+    @staticmethod
+    def get_keyring_service(config):
+        return f"linear://{config.host}"
+
     def issues(self):
         for issue in self.get_issues():
             yield self.get_issue_for_record(issue, {})
