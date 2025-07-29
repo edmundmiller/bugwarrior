@@ -9,6 +9,7 @@ with open('bugwarrior/README.rst') as readme_file:
 long_description = readme.split('split here', 1)[1]
 
 extras = {
+    "applereminders": ["apple-reminders"],
     "bts": ["python-debianbts>=2.6.1"],
     "bugzilla": ["python-bugzilla>=2.0.0"],
     "gmail": ["google-api-python-client", "google-auth-oauthlib"],
@@ -79,6 +80,7 @@ setup(name='bugwarrior',
       bugwarrior-vault = bugwarrior:vault
       bugwarrior-uda = bugwarrior:uda
       [bugwarrior.service]
+      applereminders=bugwarrior.services.applereminders:AppleRemindersService
       github=bugwarrior.services.github:GithubService
       gitlab=bugwarrior.services.gitlab:GitlabService
       bitbucket=bugwarrior.services.bitbucket:BitbucketService
