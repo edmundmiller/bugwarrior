@@ -3,8 +3,8 @@ import itertools
 import os
 import pathlib
 import textwrap
-from unittest import TestCase
 
+import pytest
 try:
     import tomllib  # python>=3.11
 except ImportError:
@@ -16,9 +16,9 @@ from ..base import ConfigTest
 
 
 class ExampleTest(ConfigTest):
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_example_test(self, setup_config_test):
         self.basedir = pathlib.Path(__file__).parent
-        super().setUp()
 
     def test_example_bugwarriorrc(self):
         os.environ['BUGWARRIORRC'] = str(
@@ -109,8 +109,9 @@ class TestGetConfigPath(LoadTest):
         self.assertEqual(load.get_config_path(), rc)
 
 
-class TestBugwarriorConfigParser(TestCase):
-    def setUp(self):
+class TestBugwarriorConfigParser:
+    @pytest.fixture(autouse=True)
+    def setup_parser_test(self):
         self.config = load.BugwarriorConfigParser()
         self.config['general'] = {
             'someint': '4',
@@ -119,13 +120,13 @@ class TestBugwarriorConfigParser(TestCase):
         }
 
     def test_getint(self):
-        self.assertEqual(self.config.getint('general', 'someint'), 4)
+        assert self.config.getint('general', 'someint') == 4
 
     def test_getint_none(self):
-        self.assertEqual(self.config.getint('general', 'somenone'), None)
+        assert self.config.getint('general', 'somenone') is None
 
     def test_getint_valueerror(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.config.getint('general', 'somechar')
 
 
