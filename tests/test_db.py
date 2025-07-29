@@ -248,4 +248,4 @@ class TestUDAs(ConfigTest):
             'uda.githuburl.type=string',
             'uda.githubuser.label=Github User',
             'uda.githubuser.type=string',
-        ])
+        ]

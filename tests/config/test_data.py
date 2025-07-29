@@ -1,20 +1,21 @@
 import json
 import os
 
+import pytest
 from bugwarrior.config import data, schema
 
 from ..base import ConfigTest
 
 
 class TestData(ConfigTest):
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def setup_data_test(self, setup_config_test):
         self.data = data.BugwarriorData(self.lists_path)
 
     def assert0600(self):
         permissions = oct(os.stat(self.data._datafile).st_mode & 0o777)
         # python2 -> 0600, python3 -> 0o600
-        self.assertIn(permissions, ['0600', '0o600'])
+        assert permissions in ['0600', '0o600']
 
     def test_get_set(self):
         # "touch" data file.
@@ -23,25 +24,23 @@ class TestData(ConfigTest):
 
         self.data.set('key', 'value')
 
-        self.assertEqual(self.data.get('key'), 'value')
-        self.assertEqual(
-            self.data.get_data(), {'old': 'stuff', 'key': 'value'})
+        assert self.data.get('key') == 'value'
+        assert self.data.get_data() == {'old': 'stuff', 'key': 'value'}
         self.assert0600()
 
     def test_set_first_time(self):
         self.data.set('key', 'value')
 
-        self.assertEqual(self.data.get('key'), 'value')
+        assert self.data.get('key') == 'value'
         self.assert0600()
 
     def test_path_attribute(self):
-        self.assertEqual(self.data.path, self.lists_path)
+        assert self.data.path == self.lists_path
 
 
 class TestGetDataPath(ConfigTest):
-
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def setup_datapath_test(self, setup_config_test):
         rawconfig = {
             'general': {'targets': ['my_service'], 'interactive': False},
             'my_service': {
@@ -54,23 +53,22 @@ class TestGetDataPath(ConfigTest):
         self.config = schema.validate_config(
             rawconfig, 'general', 'configpath')
 
-    def assertDataPath(self, expected_datapath):
-        self.assertEqual(expected_datapath,
-                         data.get_data_path(self.config['general'].taskrc))
+    def assert_data_path(self, expected_datapath):
+        assert expected_datapath == data.get_data_path(self.config['general'].taskrc)
 
     def test_TASKDATA(self):
         """
         TASKDATA should be respected, even when taskrc's data.location is set.
         """
         datapath = os.environ['TASKDATA'] = os.path.join(self.tempdir, 'data')
-        self.assertDataPath(datapath)
+        self.assert_data_path(datapath)
 
     def test_taskrc_datalocation(self):
         """
         When TASKDATA is not set, data.location in taskrc should be respected.
         """
-        self.assertTrue('TASKDATA' not in os.environ)
-        self.assertDataPath(self.lists_path)
+        assert 'TASKDATA' not in os.environ
+        self.assert_data_path(self.lists_path)
 
     def test_unassigned(self):
         """
@@ -80,6 +78,6 @@ class TestGetDataPath(ConfigTest):
         with open(self.taskrc, 'w'):
             pass
 
-        self.assertTrue('TASKDATA' not in os.environ)
+        assert 'TASKDATA' not in os.environ
 
-        self.assertDataPath(os.path.expanduser('~/.task'))
+        self.assert_data_path(os.path.expanduser('~/.task'))
