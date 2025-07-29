@@ -1,10 +1,10 @@
 [project]
 name = "bugwarrior"
-version = "2.0.0.post"
+version = "2.0.0-alpha"
 description = "a command line utility for updating your local taskwarrior database from your forge issue trackers"
 readme = "bugwarrior/README.rst"
-# pydantic.v1 does not support python-3.14 See <https://github.com/GothenburgBitFactory/bugwarrior/issues/998>.
-requires-python = ">=3.10,<3.14"
+# Needed for pydantic>1.8.
+requires-python = ">3.8,<4"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE.txt"]
 keywords=["task", "taskwarrior", "todo", "github"]
@@ -30,34 +30,31 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-bts = ["python-debianbts>=4.1.1"]
+applereminders = ["apple-reminders"]
+bts = ["python-debianbts>=2.6.1"]
 bugzilla = ["python-bugzilla>=2.0.0"]
 gmail = ["google-api-python-client", "google-auth-oauthlib"]
 ini2toml = ["ini2toml[full]"]
-jira = ["jira>=3.10.0"]
+jira = ["jira>=0.22"]
 kanboard = ["kanboard"]
 keyring = ["keyring"]
 phabricator = ["phabricator"]
 test = [
    "docutils",
+   "flake8",
    "pytest",
    "pytest-subtests",
    "responses",
-   "ruff",
-   # sphinx-click doesn't yet support sphinx-9.0. https://github.com/click-contrib/sphinx-click/issues/157
-   "sphinx>=1.0,<9.0",
+   "sphinx>=1.0",
    "sphinx-click",
    "sphinx-inline-tabs",
 
    # Workaround https://github.com/python/importlib_metadata/issues/406
    "importlib-metadata<5",
-   # To make this installable with uvx/pipx and no additional options needed.
-   "setuptools",
 ]
-todoist = ["todoist_api_python>=3.0.0"]
 trac = ["offtrac"]
 
-all = ["bugwarrior[bts,bugzilla,gmail,ini2toml,jira,kanboard,keyring,phabricator,test,todoist,trac]"]
+all = ["bugwarrior[applereminders,bts,bugzilla,gmail,ini2toml,jira,kanboard,keyring,phabricator,test,trac]"]
 
 [project.urls]
 documentation = "https://bugwarrior.readthedocs.io/en/stable/"
@@ -70,6 +67,7 @@ bugwarrior-vault = "bugwarrior:vault"
 bugwarrior-uda = "bugwarrior:uda"
 
 [project.entry-points."bugwarrior.service"]
+applereminders = "bugwarrior.services.applereminders:AppleRemindersService"
 azuredevops = "bugwarrior.services.azuredevops:AzureDevopsService"
 deck = "bugwarrior.services.deck:NextcloudDeckService"
 gitbug = "bugwarrior.services.gitbug:GitBugService"
@@ -91,27 +89,14 @@ youtrack = "bugwarrior.services.youtrack:YoutrackService"
 gmail = "bugwarrior.services.gmail:GmailService"
 teamwork_projects = "bugwarrior.services.teamwork_projects:TeamworkService"
 pivotaltracker = "bugwarrior.services.pivotaltracker:PivotalTrackerService"
-linear = "bugwarrior.services.linear:LinearService"
 logseq = "bugwarrior.services.logseq:LogseqService"
 todoist = "bugwarrior.services.todoist:TodoistService"
 
 [project.entry-points."ini2toml.processing"]
 bugwarrior = "bugwarrior.config.ini2toml_plugin:activate"
 
-[tool.ruff.format]
-quote-style = "preserve"
-skip-magic-trailing-comma = true
-
-[tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "W", "I"]
-
-[tool.ruff.lint.isort]
-combine-as-imports = true
-force-sort-within-sections = true
-split-on-trailing-comma = false
-
-[tool.setuptools.packages.find]
-include = ["bugwarrior*"]
+[tool.setuptools]
+packages = ["bugwarrior"]
 
 [build-system]
 requires = ["setuptools"]
