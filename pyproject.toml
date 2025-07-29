@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-applereminders = ["apple-reminders"]
+applereminders = ["pyobjc-framework-EventKit"]
 bts = ["python-debianbts>=2.6.1"]
 bugzilla = ["python-bugzilla>=2.0.0"]
 gmail = ["google-api-python-client", "google-auth-oauthlib"]

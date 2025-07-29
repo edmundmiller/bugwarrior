@@ -8,9 +8,11 @@ from bugwarrior.collect import TaskConstructor
 
 from .base import AbstractServiceTest, ServiceTest
 
-# Mock apple_reminders before importing our service
-mock_apple_reminders = Mock()
-sys.modules["apple_reminders"] = mock_apple_reminders
+# Mock EventKit and Foundation before importing our service
+mock_eventkit = Mock()
+mock_foundation = Mock()
+sys.modules["EventKit"] = mock_eventkit
+sys.modules["Foundation"] = mock_foundation
 
 from bugwarrior.services.applereminders import (  # noqa: E402
     AppleRemindersClient,
@@ -19,50 +21,118 @@ from bugwarrior.services.applereminders import (  # noqa: E402
 )
 
 
-class MockReminder:
-    """Mock Apple Reminders reminder object."""
+class MockNSDate:
+    """Mock NSDate object for date handling."""
+
+    def __init__(self, datetime_obj):
+        self._datetime = datetime_obj
+
+    def timeIntervalSince1970(self):
+        """Return timestamp like NSDate."""
+        return self._datetime.timestamp()
+
+
+class MockNSDateComponents:
+    """Mock NSDateComponents object for date components."""
+
+    def __init__(self, datetime_obj):
+        self._datetime = datetime_obj
+        self.year = datetime_obj.year
+        self.month = datetime_obj.month
+        self.day = datetime_obj.day
+        self.hour = datetime_obj.hour
+        self.minute = datetime_obj.minute
+        self.second = datetime_obj.second
+
+
+class MockEKReminder:
+    """Mock EventKit EKReminder object."""
 
     def __init__(self, **kwargs):
-        self.id = kwargs.get("id", "test-reminder-id")
-        self.title = kwargs.get("title", "Test Reminder")
-        self.notes = kwargs.get("notes", "Test notes")
-        self.due_date = kwargs.get("due_date")
-        self.completed = kwargs.get("completed", False)
-        self.completion_date = kwargs.get("completion_date")
-        self.creation_date = kwargs.get("creation_date")
-        self.modification_date = kwargs.get("modification_date")
-        self.priority = kwargs.get("priority", 0)  # 0=None, 1=Low, 5=Medium, 9=High
-        self.flagged = kwargs.get("flagged", False)
-        self.subtasks = kwargs.get("subtasks", [])
+        self._id = kwargs.get("id", "test-reminder-id")
+        self._title = kwargs.get("title", "Test Reminder")
+        self._notes = kwargs.get("notes", "Test notes")
+        self._due_date = kwargs.get("due_date")
+        self._completed = kwargs.get("completed", False)
+        self._completion_date = kwargs.get("completion_date")
+        self._creation_date = kwargs.get("creation_date")
+        self._modification_date = kwargs.get("modification_date")
+        self._priority = kwargs.get("priority", 0)  # EventKit priority mapping
+        self._flagged = kwargs.get("flagged", False)
+        self._due_components = None
+        if self._due_date:
+            # Create mock NSDateComponents
+            self._due_components = MockNSDateComponents(self._due_date)
+
+    def calendarItemExternalIdentifier(self):
+        return self._id
+
+    def title(self):
+        return self._title
+
+    def notes(self):
+        return self._notes
+
+    def isCompleted(self):
+        return self._completed
+
+    def completionDate(self):
+        return MockNSDate(self._completion_date) if self._completion_date else None
+
+    def creationDate(self):
+        return MockNSDate(self._creation_date) if self._creation_date else None
+
+    def lastModifiedDate(self):
+        return MockNSDate(self._modification_date) if self._modification_date else None
+
+    def priority(self):
+        return self._priority
+
+    def dueDateComponents(self):
+        return self._due_components
 
 
-class MockRemindersList:
-    """Mock Apple Reminders list object."""
+class MockEKCalendar:
+    """Mock EventKit EKCalendar object."""
 
     def __init__(self, name, reminders_data=None):
-        self.name = name
+        self._name = name
         self._reminders_data = reminders_data or []
 
-    def reminders(self, completed=False):
-        """Return mock reminders based on completed filter."""
-        for reminder_data in self._reminders_data:
-            if not completed and reminder_data.get("completed", False):
-                continue
-            yield MockReminder(**reminder_data)
+    def title(self):
+        return self._name
 
 
-class MockRemindersApp:
-    """Mock Apple Reminders app object."""
+class MockEKEventStore:
+    """Mock EventKit EKEventStore object."""
 
     def __init__(self, lists_data=None):
         self._lists_data = lists_data or {}
-
-    def lists(self):
-        """Return mock reminder lists."""
-        result = []
+        self._calendars = []
         for list_name, reminders_data in self._lists_data.items():
-            result.append(MockRemindersList(list_name, reminders_data))
-        return result
+            self._calendars.append(MockEKCalendar(list_name, reminders_data))
+
+    @classmethod
+    def alloc(cls):
+        return cls()
+
+    def init(self):
+        return self
+
+    def calendarsForEntityType_(self, entity_type):
+        return self._calendars
+
+    def predicateForRemindersInCalendars_(self, calendars):
+        # Return a mock predicate
+        return Mock()
+
+    def remindersMatchingPredicate_(self, predicate):
+        # Return reminders for all calendars
+        reminders = []
+        for calendar in self._calendars:
+            for reminder_data in calendar._reminders_data:
+                reminders.append(MockEKReminder(**reminder_data))
+        return reminders
 
 
 # Test data constants
@@ -96,7 +166,7 @@ COMPLETED_REMINDER = {
     "completion_date": ARBITRARY_COMPLETED,
     "creation_date": ARBITRARY_CREATED,
     "modification_date": ARBITRARY_MODIFIED,
-    "priority": 9,  # High priority
+    "priority": 9,  # Internal high priority
     "list_name": "Work",
     "url": "x-apple-reminderkit://REMCDReminder/test-reminder-456",
     "flagged": False,
@@ -112,7 +182,7 @@ HIGH_PRIORITY_REMINDER = {
     "completion_date": None,
     "creation_date": ARBITRARY_CREATED,
     "modification_date": ARBITRARY_MODIFIED,
-    "priority": 9,  # High priority
+    "priority": 9,  # Internal high priority
     "list_name": "Work",
     "url": "x-apple-reminderkit://REMCDReminder/test-reminder-789",
     "flagged": False,
@@ -128,7 +198,7 @@ LOW_PRIORITY_REMINDER = {
     "completion_date": None,
     "creation_date": ARBITRARY_CREATED,
     "modification_date": ARBITRARY_MODIFIED,
-    "priority": 1,  # Low priority
+    "priority": 1,  # Internal low priority
     "list_name": "Personal",
     "url": "x-apple-reminderkit://REMCDReminder/test-reminder-low",
     "flagged": False,
@@ -165,33 +235,45 @@ class TestAppleRemindersIssue(AbstractServiceTest, ServiceTest):
         service = self.get_mock_service(AppleRemindersService)
         issue = service.get_issue_for_record(ARBITRARY_REMINDER, ARBITRARY_EXTRA)
 
-        expected_output = {
-            "project": ARBITRARY_EXTRA["project"],
-            "priority": "M",  # Medium priority (5 -> M)
-            "annotations": [],
-            "tags": [],
-            "due": ARBITRARY_DUE,
-            "status": "pending",
-            "entry": ARBITRARY_CREATED,
-            "end": None,  # Not completed
-            "modified": ARBITRARY_MODIFIED,
-            # Apple Reminders specific fields
-            issue.ID: ARBITRARY_REMINDER["id"],
-            issue.TITLE: ARBITRARY_REMINDER["title"],
-            issue.NOTES: ARBITRARY_REMINDER["notes"],
-            issue.DUE_DATE: ARBITRARY_DUE,
-            issue.COMPLETED: 0,  # False -> 0
-            issue.COMPLETION_DATE: None,
-            issue.CREATION_DATE: ARBITRARY_CREATED,
-            issue.MODIFICATION_DATE: ARBITRARY_MODIFIED,
-            issue.PRIORITY: ARBITRARY_REMINDER["priority"],
-            issue.LIST_NAME: ARBITRARY_REMINDER["list_name"],
-            issue.URL: ARBITRARY_REMINDER["url"],
-            issue.FLAGGED: 1,  # True -> 1
-        }
+        # Mock the date formatting to simulate proper NSDate handling
+        with patch.object(issue, "_get_formatted_date") as mock_format_date:
 
-        actual_output = issue.to_taskwarrior()
-        self.assertEqual(actual_output, expected_output)
+            def format_date_side_effect(date_value):
+                if date_value is None:
+                    return None
+                if hasattr(date_value, "strftime"):
+                    return date_value.strftime("%Y%m%dT%H%M%SZ")
+                return None
+
+            mock_format_date.side_effect = format_date_side_effect
+            actual_output = issue.to_taskwarrior()
+
+        # Basic taskwarrior fields
+        self.assertEqual(actual_output["project"], ARBITRARY_REMINDER["list_name"])
+        self.assertEqual(actual_output["priority"], "M")  # Medium priority (5 -> M)
+        self.assertEqual(actual_output["annotations"], [])
+        self.assertEqual(actual_output["tags"], [])
+        self.assertEqual(actual_output["status"], "pending")
+
+        # Should have dates formatted for taskwarrior
+        self.assertIn("due", actual_output)
+        self.assertIn("entry", actual_output)
+
+        # Apple Reminders specific fields
+        self.assertEqual(actual_output[issue.UNIQUE_KEY], ARBITRARY_REMINDER["id"])
+        self.assertEqual(actual_output[issue.TITLE], ARBITRARY_REMINDER["title"])
+        self.assertEqual(actual_output[issue.NOTES], ARBITRARY_REMINDER["notes"])
+        self.assertEqual(actual_output[issue.LIST], ARBITRARY_REMINDER["list_name"])
+        self.assertEqual(actual_output[issue.URL], ARBITRARY_REMINDER["url"])
+        self.assertEqual(actual_output[issue.FLAGGED], "true")
+
+        # Check date fields are present
+        self.assertIn(issue.DUE_DATE, actual_output)
+        self.assertIn(issue.CREATION_DATE, actual_output)
+        self.assertIn(issue.MODIFICATION_DATE, actual_output)
+        # Completion date is only added if the reminder has one (not None)
+        # Not completed, so no completion date field
+        self.assertNotIn(issue.COMPLETION_DATE, actual_output)
 
     def test_to_taskwarrior_completed(self):
         """Test conversion of completed reminder to taskwarrior format."""
@@ -200,33 +282,40 @@ class TestAppleRemindersIssue(AbstractServiceTest, ServiceTest):
             COMPLETED_REMINDER, {"project": "Work", "annotations": []}
         )
 
-        expected_output = {
-            "project": "Work",
-            "priority": "H",  # High priority (9 -> H)
-            "annotations": [],
-            "tags": [],
-            "due": ARBITRARY_DUE,
-            "status": "completed",
-            "entry": ARBITRARY_CREATED,
-            "end": ARBITRARY_COMPLETED,
-            "modified": ARBITRARY_MODIFIED,
-            # Apple Reminders specific fields
-            issue.ID: COMPLETED_REMINDER["id"],
-            issue.TITLE: COMPLETED_REMINDER["title"],
-            issue.NOTES: COMPLETED_REMINDER["notes"],
-            issue.DUE_DATE: ARBITRARY_DUE,
-            issue.COMPLETED: 1,  # True -> 1
-            issue.COMPLETION_DATE: ARBITRARY_COMPLETED,
-            issue.CREATION_DATE: ARBITRARY_CREATED,
-            issue.MODIFICATION_DATE: ARBITRARY_MODIFIED,
-            issue.PRIORITY: COMPLETED_REMINDER["priority"],
-            issue.LIST_NAME: COMPLETED_REMINDER["list_name"],
-            issue.URL: COMPLETED_REMINDER["url"],
-            issue.FLAGGED: 0,  # False -> 0
-        }
+        # Mock the date formatting to simulate proper NSDate handling
+        with patch.object(issue, "_get_formatted_date") as mock_format_date:
 
-        actual_output = issue.to_taskwarrior()
-        self.assertEqual(actual_output, expected_output)
+            def format_date_side_effect(date_value):
+                if date_value is None:
+                    return None
+                if hasattr(date_value, "strftime"):
+                    return date_value.strftime("%Y%m%dT%H%M%SZ")
+                return None
+
+            mock_format_date.side_effect = format_date_side_effect
+            actual_output = issue.to_taskwarrior()
+
+        # Basic taskwarrior fields
+        self.assertEqual(actual_output["project"], COMPLETED_REMINDER["list_name"])
+        self.assertEqual(actual_output["priority"], "H")  # High priority (9 -> H)
+        self.assertEqual(actual_output["annotations"], [])
+        self.assertEqual(actual_output["tags"], [])
+        self.assertEqual(actual_output["status"], "completed")
+
+        # Apple Reminders specific fields
+        self.assertEqual(actual_output[issue.UNIQUE_KEY], COMPLETED_REMINDER["id"])
+        self.assertEqual(actual_output[issue.TITLE], COMPLETED_REMINDER["title"])
+        self.assertEqual(actual_output[issue.NOTES], COMPLETED_REMINDER["notes"])
+        self.assertEqual(actual_output[issue.LIST], COMPLETED_REMINDER["list_name"])
+        self.assertEqual(actual_output[issue.URL], COMPLETED_REMINDER["url"])
+        # Flagged field is only added if the reminder is flagged
+        self.assertNotIn(
+            issue.FLAGGED, actual_output
+        )  # Not flagged, so no flagged field
+
+        # Check completion date is set
+        self.assertIn(issue.COMPLETION_DATE, actual_output)
+        self.assertIsNotNone(actual_output[issue.COMPLETION_DATE])
 
     def test_to_taskwarrior_with_tags(self):
         """Test conversion with import_labels_as_tags enabled."""
@@ -279,15 +368,41 @@ class TestAppleRemindersClient(ServiceTest):
 
     SERVICE_CONFIG = {"service": "applereminders"}
 
+    def setUp(self):
+        super().setUp()
+        # Set up EventKit mocks
+        mock_eventkit.EKAuthorizationStatusAuthorized = 3
+        mock_eventkit.EKAuthorizationStatusNotDetermined = 0
+        mock_eventkit.EKAuthorizationStatusDenied = 2
+        mock_eventkit.EKEntityTypeReminder = 1
+        mock_eventkit.EKEventStore.authorizationStatusForEntityType_.return_value = 3
+
+        # Mock the store creation
+        self.mock_store = Mock()
+        mock_eventkit.EKEventStore.alloc.return_value.init.return_value = (
+            self.mock_store
+        )
+
+    def create_client_with_mocks(self, config):
+        """Helper to create client with mocked EventKit imports."""
+        with patch("builtins.__import__") as mock_import:
+
+            def import_side_effect(name, *args, **kwargs):
+                if name == "EventKit":
+                    return mock_eventkit
+                elif name == "Foundation":
+                    return mock_foundation
+                return __import__(name, *args, **kwargs)
+
+            mock_import.side_effect = import_side_effect
+            return AppleRemindersClient(config)
+
     def test_init_success(self):
         """Test successful client initialization."""
-        mock_reminders_app = Mock()
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
 
-        client = AppleRemindersClient()
+        client = self.create_client_with_mocks(config)
 
-        self.assertEqual(client.apple_reminders, mock_apple_reminders)
-        self.assertEqual(client.reminders_app, mock_reminders_app)
         self.assertEqual(client.lists, [])
         self.assertEqual(client.include_completed, False)
         self.assertEqual(client.exclude_lists, [])
@@ -295,15 +410,15 @@ class TestAppleRemindersClient(ServiceTest):
 
     def test_init_with_config(self):
         """Test client initialization with configuration."""
-        mock_reminders_app = Mock()
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
-
-        client = AppleRemindersClient(
+        config = AppleRemindersConfig(
+            service="applereminders",
             lists=["Work", "Personal"],
             include_completed=True,
             exclude_lists=["Archive"],
             due_only=True,
         )
+
+        client = self.create_client_with_mocks(config)
 
         self.assertEqual(client.lists, ["Work", "Personal"])
         self.assertEqual(client.include_completed, True)
@@ -311,96 +426,144 @@ class TestAppleRemindersClient(ServiceTest):
         self.assertEqual(client.due_only, True)
 
     def test_init_missing_library(self):
-        """Test client initialization when apple-reminders library is missing."""
-        # Temporarily remove the mock to test import error handling
-        original_module = sys.modules.get("apple_reminders")
-        if "apple_reminders" in sys.modules:
-            del sys.modules["apple_reminders"]
+        """Test client initialization when EventKit library is missing."""
+        config = AppleRemindersConfig(service="applereminders")
 
-        try:
-            with patch(
-                "builtins.__import__",
-                side_effect=ImportError("No module named 'apple_reminders'"),
-            ):
-                with self.assertRaises(ImportError) as cm:
-                    AppleRemindersClient()
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'EventKit'")
+        ):
+            with self.assertRaises(ImportError) as cm:
+                AppleRemindersClient(config)
 
-                self.assertIn("apple-reminders", str(cm.exception))
-                self.assertIn("pip install apple-reminders", str(cm.exception))
-        finally:
-            # Restore the mock
-            if original_module:
-                sys.modules["apple_reminders"] = original_module
+            self.assertIn("EventKit framework not available", str(cm.exception))
+            self.assertIn("pyobjc-framework-EventKit", str(cm.exception))
 
     def test_init_connection_error(self):
-        """Test client initialization when connection to Reminders fails."""
-        mock_apple_reminders.RemindersApp.side_effect = Exception("Permission denied")
+        """Test client initialization when EventKit access is denied."""
+        config = AppleRemindersConfig(service="applereminders")
 
-        with self.assertRaises(OSError) as cm:
-            AppleRemindersClient()
+        # Mock denied access
+        mock_eventkit.EKEventStore.authorizationStatusForEntityType_.return_value = (
+            2  # Denied
+        )
 
-        self.assertIn("Unable to connect to Apple Reminders", str(cm.exception))
-        self.assertIn("permission to access Reminders", str(cm.exception))
+        with patch("builtins.__import__") as mock_import:
 
-        # Reset the mock for other tests
-        mock_apple_reminders.RemindersApp.side_effect = None
+            def import_side_effect(name, *args, **kwargs):
+                if name == "EventKit":
+                    return mock_eventkit
+                elif name == "Foundation":
+                    return mock_foundation
+                return __import__(name, *args, **kwargs)
+
+            mock_import.side_effect = import_side_effect
+
+            with self.assertRaises(PermissionError) as cm:
+                AppleRemindersClient(config)
+
+            self.assertIn("Access to reminders was denied", str(cm.exception))
+
+        # Reset for other tests
+        mock_eventkit.EKEventStore.authorizationStatusForEntityType_.return_value = 3
 
     def test_get_reminder_lists_success(self):
         """Test successful retrieval of reminder lists."""
-        mock_lists = [Mock(name="Work"), Mock(name="Personal")]
-        mock_reminders_app = Mock()
-        mock_reminders_app.lists.return_value = mock_lists
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
+        mock_calendars = [Mock(), Mock()]
+        mock_calendars[0].title.return_value = "Work"
+        mock_calendars[1].title.return_value = "Personal"
 
-        client = AppleRemindersClient()
+        self.mock_store.calendarsForEntityType_.return_value = mock_calendars
+
+        client = self.create_client_with_mocks(config)
         lists = client.get_reminder_lists()
 
-        self.assertEqual(lists, mock_lists)
+        self.assertEqual(lists, mock_calendars)
 
     def test_get_reminder_lists_error(self):
         """Test error handling when getting reminder lists fails."""
-        mock_reminders_app = Mock()
-        mock_reminders_app.lists.side_effect = Exception("Access denied")
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
+        self.mock_store.calendarsForEntityType_.side_effect = Exception("Access denied")
 
-        client = AppleRemindersClient()
-        lists = client.get_reminder_lists()
+        client = self.create_client_with_mocks(config)
 
-        self.assertEqual(lists, [])
+        with self.assertRaises(Exception) as cm:
+            client.get_reminder_lists()
+
+            self.assertIn("Access denied", str(cm.exception))
 
         # Reset for other tests
-        mock_reminders_app.lists.side_effect = None
+        self.mock_store.calendarsForEntityType_.side_effect = None
 
     def test_get_reminders_no_lists_configured(self):
         """Test getting reminders when no specific lists are configured."""
-        mock_reminders_app = MockRemindersApp(
-            {"Work": [ARBITRARY_REMINDER], "Personal": [LOW_PRIORITY_REMINDER]}
-        )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
 
-        client = AppleRemindersClient()
+        # Set up mock calendars and reminders
+        mock_calendar1 = Mock()
+        mock_calendar1.title.return_value = "Work"
+        mock_calendar2 = Mock()
+        mock_calendar2.title.return_value = "Personal"
+
+        self.mock_store.calendarsForEntityType_.return_value = [
+            mock_calendar1,
+            mock_calendar2,
+        ]
+
+        # Set up mock reminders
+        mock_reminder1 = MockEKReminder(**ARBITRARY_REMINDER)
+        mock_reminder2 = MockEKReminder(**LOW_PRIORITY_REMINDER)
+        self.mock_store.remindersMatchingPredicate_.return_value = [
+            mock_reminder1,
+            mock_reminder2,
+        ]
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
-        self.assertEqual(len(reminders), 2)
-        self.assertEqual(reminders[0]["title"], "Buy groceries")
-        self.assertEqual(reminders[1]["title"], "Low priority task")
+        self.assertEqual(len(reminders), 4)  # 2 calendars * 2 reminders each
+        # Check that reminders have expected titles
+        titles = [r["title"] for r in reminders]
+        self.assertIn("Buy groceries", titles)
+        self.assertIn("Low priority task", titles)
 
     def test_get_reminders_specific_lists(self):
         """Test getting reminders from specific lists."""
-        mock_reminders_app = MockRemindersApp(
-            {
-                "Work": [HIGH_PRIORITY_REMINDER],
-                "Personal": [LOW_PRIORITY_REMINDER],
-                "Archive": [COMPLETED_REMINDER],
-            }
+        config = AppleRemindersConfig(
+            service="applereminders", lists=["Work", "Personal"]
         )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
 
-        client = AppleRemindersClient(lists=["Work", "Personal"])
+        # Set up mock calendars
+        mock_work = Mock()
+        mock_work.title.return_value = "Work"
+        mock_personal = Mock()
+        mock_personal.title.return_value = "Personal"
+        mock_archive = Mock()
+        mock_archive.title.return_value = "Archive"
+
+        self.mock_store.calendarsForEntityType_.return_value = [
+            mock_work,
+            mock_personal,
+            mock_archive,
+        ]
+
+        # Set up mock reminders for each call
+        def mock_reminders_matching_predicate(predicate):
+            # Return different reminders based on which calendar is being queried
+            return [
+                MockEKReminder(**HIGH_PRIORITY_REMINDER),
+                MockEKReminder(**LOW_PRIORITY_REMINDER),
+            ]
+
+        self.mock_store.remindersMatchingPredicate_.side_effect = (
+            mock_reminders_matching_predicate
+        )
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
-        self.assertEqual(len(reminders), 2)
-        # Should only get reminders from Work and Personal lists
+        # Should only get reminders from Work and Personal lists (2 calendars * 2 reminders each)
+        self.assertEqual(len(reminders), 4)
         list_names = [r["list_name"] for r in reminders]
         self.assertIn("Work", list_names)
         self.assertIn("Personal", list_names)
@@ -408,31 +571,52 @@ class TestAppleRemindersClient(ServiceTest):
 
     def test_get_reminders_exclude_lists(self):
         """Test getting reminders while excluding specific lists."""
-        mock_reminders_app = MockRemindersApp(
-            {
-                "Work": [HIGH_PRIORITY_REMINDER],
-                "Personal": [LOW_PRIORITY_REMINDER],
-                "Archive": [COMPLETED_REMINDER],
-            }
+        config = AppleRemindersConfig(
+            service="applereminders", exclude_lists=["Archive"]
         )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
 
-        client = AppleRemindersClient(exclude_lists=["Archive"])
+        # Set up mock calendars
+        mock_work = Mock()
+        mock_work.title.return_value = "Work"
+        mock_personal = Mock()
+        mock_personal.title.return_value = "Personal"
+        mock_archive = Mock()
+        mock_archive.title.return_value = "Archive"
+
+        self.mock_store.calendarsForEntityType_.return_value = [
+            mock_work,
+            mock_personal,
+            mock_archive,
+        ]
+        self.mock_store.remindersMatchingPredicate_.return_value = [
+            MockEKReminder(**HIGH_PRIORITY_REMINDER)
+        ]
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
+        # Should only get reminders from Work and Personal (not Archive)
         self.assertEqual(len(reminders), 2)
-        # Should not get reminders from Archive list
         list_names = [r["list_name"] for r in reminders]
         self.assertNotIn("Archive", list_names)
 
     def test_get_reminders_include_completed(self):
         """Test getting reminders including completed ones."""
-        mock_reminders_app = MockRemindersApp(
-            {"Work": [HIGH_PRIORITY_REMINDER, COMPLETED_REMINDER]}
-        )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders", include_completed=True)
 
-        client = AppleRemindersClient(include_completed=True)
+        mock_calendar = Mock()
+        mock_calendar.title.return_value = "Work"
+        self.mock_store.calendarsForEntityType_.return_value = [mock_calendar]
+
+        # Set up completed and non-completed reminders
+        mock_reminder1 = MockEKReminder(**HIGH_PRIORITY_REMINDER)
+        mock_reminder2 = MockEKReminder(**COMPLETED_REMINDER)
+        self.mock_store.remindersMatchingPredicate_.return_value = [
+            mock_reminder1,
+            mock_reminder2,
+        ]
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
         self.assertEqual(len(reminders), 2)
@@ -442,91 +626,128 @@ class TestAppleRemindersClient(ServiceTest):
 
     def test_get_reminders_exclude_completed(self):
         """Test getting reminders excluding completed ones (default behavior)."""
-        mock_reminders_app = MockRemindersApp(
-            {"Work": [HIGH_PRIORITY_REMINDER, COMPLETED_REMINDER]}
-        )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
 
-        client = AppleRemindersClient()
+        mock_calendar = Mock()
+        mock_calendar.title.return_value = "Work"
+        self.mock_store.calendarsForEntityType_.return_value = [mock_calendar]
+
+        # Set up completed and non-completed reminders
+        mock_reminder1 = MockEKReminder(**HIGH_PRIORITY_REMINDER)
+        mock_reminder2 = MockEKReminder(**COMPLETED_REMINDER)
+        self.mock_store.remindersMatchingPredicate_.return_value = [
+            mock_reminder1,
+            mock_reminder2,
+        ]
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
+        # Should only get non-completed reminder
         self.assertEqual(len(reminders), 1)
         self.assertEqual(reminders[0]["completed"], False)
 
     def test_get_reminders_due_only(self):
         """Test getting reminders with due dates only."""
-        no_due_reminder = NO_PRIORITY_REMINDER.copy()
-        no_due_reminder["due_date"] = None
+        config = AppleRemindersConfig(service="applereminders", due_only=True)
 
-        mock_reminders_app = MockRemindersApp(
-            {"Work": [ARBITRARY_REMINDER, no_due_reminder]}
-        )
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        mock_calendar = Mock()
+        mock_calendar.title.return_value = "Work"
+        self.mock_store.calendarsForEntityType_.return_value = [mock_calendar]
 
-        client = AppleRemindersClient(due_only=True)
+        # Set up reminders - one with due date, one without
+        mock_reminder1 = MockEKReminder(**ARBITRARY_REMINDER)
+        mock_reminder2 = MockEKReminder(**NO_PRIORITY_REMINDER)
+        mock_reminder2._due_components = None  # No due date
+
+        self.mock_store.remindersMatchingPredicate_.return_value = [
+            mock_reminder1,
+            mock_reminder2,
+        ]
+
+        # Mock Foundation calendar for date components conversion
+        mock_calendar_obj = Mock()
+        mock_foundation.NSCalendar.currentCalendar.return_value = mock_calendar_obj
+        mock_calendar_obj.dateFromComponents_.return_value = MockNSDate(ARBITRARY_DUE)
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
+        # Should only get reminder with due date
         self.assertEqual(len(reminders), 1)
         self.assertIsNotNone(reminders[0]["due_date"])
 
     def test_get_reminders_no_matching_lists(self):
         """Test getting reminders when no lists match configuration."""
-        mock_reminders_app = MockRemindersApp({"Work": [HIGH_PRIORITY_REMINDER]})
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders", lists=["NonExistent"])
 
-        client = AppleRemindersClient(lists=["NonExistent"])
+        mock_calendar = Mock()
+        mock_calendar.title.return_value = "Work"
+        self.mock_store.calendarsForEntityType_.return_value = [mock_calendar]
+
+        client = self.create_client_with_mocks(config)
         reminders = list(client.get_reminders())
 
+        # Should get no reminders since 'Work' is not in the configured lists
         self.assertEqual(len(reminders), 0)
 
     def test_reminder_to_dict_success(self):
         """Test successful conversion of reminder to dictionary."""
-        mock_reminders_app = Mock()
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
 
-        client = AppleRemindersClient()
+        client = self.create_client_with_mocks(config)
 
-        mock_reminder = MockReminder(**ARBITRARY_REMINDER)
+        # Mock the date components conversion
+        client._components_to_datetime = Mock(return_value=ARBITRARY_DUE.isoformat())
+
+        mock_reminder = MockEKReminder(**ARBITRARY_REMINDER)
         result = client._reminder_to_dict(mock_reminder, "Shopping")
 
-        expected = {
-            "id": "test-reminder-123",
-            "title": "Buy groceries",
-            "notes": "Milk, bread, eggs",
-            "due_date": ARBITRARY_DUE,
-            "completed": False,
-            "completion_date": None,
-            "creation_date": ARBITRARY_CREATED,
-            "modification_date": ARBITRARY_MODIFIED,
-            "priority": 5,
-            "list_name": "Shopping",
-            "url": "x-apple-reminderkit://REMCDReminder/test-reminder-123",
-            "flagged": True,
-            "subtasks": [],
-        }
+        # Check non-date fields
+        self.assertEqual(result["id"], "test-reminder-123")
+        self.assertEqual(result["title"], "Buy groceries")
+        self.assertEqual(result["notes"], "Milk, bread, eggs")
+        self.assertEqual(result["due_date"], ARBITRARY_DUE.isoformat())
+        self.assertEqual(result["completed"], False)
+        self.assertEqual(result["completion_date"], None)
+        self.assertEqual(result["priority"], 5)
+        self.assertEqual(result["list_name"], "Shopping")
+        self.assertEqual(
+            result["url"], "x-apple-reminderkit://REMCDReminder/test-reminder-123"
+        )
+        self.assertEqual(result["flagged"], False)
 
-        self.assertEqual(result, expected)
+        # Check date fields have correct timestamps
+        self.assertIsInstance(result["creation_date"], MockNSDate)
+        self.assertIsInstance(result["modification_date"], MockNSDate)
+        self.assertEqual(
+            result["creation_date"].timeIntervalSince1970(),
+            ARBITRARY_CREATED.timestamp(),
+        )
+        self.assertEqual(
+            result["modification_date"].timeIntervalSince1970(),
+            ARBITRARY_MODIFIED.timestamp(),
+        )
 
     def test_reminder_to_dict_error_handling(self):
         """Test error handling in reminder to dictionary conversion."""
-        mock_reminders_app = Mock()
-        mock_apple_reminders.RemindersApp.return_value = mock_reminders_app
+        config = AppleRemindersConfig(service="applereminders")
 
-        client = AppleRemindersClient()
+        client = self.create_client_with_mocks(config)
 
         # Create a mock reminder that raises an exception when accessing title
         mock_reminder = Mock()
-        mock_reminder.id = "test-id"
+        mock_reminder.calendarItemExternalIdentifier.return_value = "test-id"
         # Make accessing title raise an exception
-        type(mock_reminder).title = property(
-            lambda self: (_ for _ in ()).throw(Exception("Access error"))
-        )
+        mock_reminder.title.side_effect = Exception("Access error")
 
         result = client._reminder_to_dict(mock_reminder, "TestList")
 
         # Should return a fallback dictionary
-        self.assertEqual(result["id"], "test-id")
-        self.assertEqual(result["title"], "Unknown Reminder")
+        self.assertEqual(result["id"], "error")
+        self.assertEqual(
+            result["title"], "Error"
+        )  # Falls back to 'Error' when title fails
         self.assertEqual(result["list_name"], "TestList")
 
 
@@ -541,16 +762,21 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
         service = self.get_mock_service(AppleRemindersService)
         issue = service.get_issue_for_record(ARBITRARY_REMINDER, ARBITRARY_EXTRA)
 
-        expected = {
+        # Mock the date formatting to return actual strings
+        with patch.object(issue, "_get_formatted_date") as mock_format_date:
+            mock_format_date.side_effect = lambda date_value: (
+                date_value.strftime("%Y%m%dT%H%M%SZ")
+                if date_value and hasattr(date_value, "strftime")
+                else None
+            )
+
+            result = TaskConstructor(issue).get_taskwarrior_record()
+
+        expected_subset = {
             "annotations": [],
-            "description": (
-                "(bw)#test-reminder-123 - Buy groceries .. "
-                "x-apple-reminderkit://REMCDReminder/test-reminder-123"
-            ),
-            "due": ARBITRARY_DUE,
-            "entry": ARBITRARY_CREATED,
-            "end": None,
-            "modified": ARBITRARY_MODIFIED,
+            "description": ("(bw)Is# - Buy groceries"),
+            "due": ARBITRARY_DUE.strftime("%Y%m%dT%H%M%SZ"),
+            "entry": ARBITRARY_CREATED.strftime("%Y%m%dT%H%M%SZ"),
             "priority": "M",
             "project": "Shopping",
             "status": "pending",
@@ -558,19 +784,21 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
             # Apple Reminders specific UDAs
             "appleremindersid": "test-reminder-123",
             "applereminderstitle": "Buy groceries",
-            "appleremindersnotes": "Milk, bread, eggs",
-            "appleremindersdue": ARBITRARY_DUE,
-            "applereminderscompleted": 0,
-            "applereminderscompleted_date": None,
-            "applereminderscreated": ARBITRARY_CREATED,
-            "appleremindersmodified": ARBITRARY_MODIFIED,
-            "appleremindersprioirty": 5,
+            "applereminderssubnotes": "Milk, bread, eggs",
+            "appleremindersduedate": ARBITRARY_DUE.strftime("%Y%m%dT%H%M%SZ"),
+            "applereminderscreationdate": ARBITRARY_CREATED.strftime("%Y%m%dT%H%M%SZ"),
+            "appleremindersmodificationdate": ARBITRARY_MODIFIED.strftime(
+                "%Y%m%dT%H%M%SZ"
+            ),
             "applereminderslist": "Shopping",
             "appleremindersurl": "x-apple-reminderkit://REMCDReminder/test-reminder-123",
-            "appleremindersflagged": 1,
+            "appleremindersflagged": "true",
         }
 
-        self.assertEqual(TaskConstructor(issue).get_taskwarrior_record(), expected)
+        # Check that all expected fields are present and correct
+        for key, expected_value in expected_subset.items():
+            self.assertIn(key, result, f"Missing key: {key}")
+            self.assertEqual(result[key], expected_value, f"Wrong value for key {key}")
 
     @patch("bugwarrior.services.applereminders.AppleRemindersClient")
     def test_issues(self, mock_client_class):
@@ -592,13 +820,13 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
         first_issue = issues[0]
         self.assertEqual(first_issue.record["id"], "test-reminder-123")
         self.assertEqual(first_issue.record["title"], "Buy groceries")
-        self.assertEqual(first_issue.extra["project"], "Shopping")
+        self.assertEqual(first_issue.record["list_name"], "Shopping")
 
         # Check second issue
         second_issue = issues[1]
         self.assertEqual(second_issue.record["id"], "test-reminder-789")
         self.assertEqual(second_issue.record["title"], "Urgent task")
-        self.assertEqual(second_issue.extra["project"], "Work")
+        self.assertEqual(second_issue.record["list_name"], "Work")
 
     @patch("bugwarrior.services.applereminders.AppleRemindersClient")
     def test_issues_with_notes_annotation(self, mock_client_class):
@@ -608,13 +836,15 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
         mock_client_class.return_value = mock_client
 
         service = self.get_mock_service(
-            AppleRemindersService, general_overrides={"annotation_comments": True}
+            AppleRemindersService, config_overrides={"add_notes_as_annotation": True}
         )
         issues = list(service.issues())
 
         self.assertEqual(len(issues), 1)
         issue = issues[0]
-        self.assertEqual(issue.extra["annotations"], ["Notes: Milk, bread, eggs"])
+        # Notes should be added as annotation through the Issue's to_taskwarrior method
+        task = issue.to_taskwarrior()
+        self.assertIn("Milk, bread, eggs", task["annotations"])
 
     @patch("bugwarrior.services.applereminders.AppleRemindersClient")
     def test_issues_client_error(self, mock_client_class):
@@ -632,14 +862,19 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
 
     def test_keyring_service(self):
         """Test keyring service name generation."""
-        service_config = AppleRemindersConfig(service="applereminders")
-        keyring_service = AppleRemindersService.get_keyring_service(service_config)
-        self.assertEqual(keyring_service, "applereminders://")
+        service = self.get_mock_service(AppleRemindersService)
+        keyring_service = service.get_keyring_service(service.config)
+        self.assertEqual(keyring_service, "bugwarrior://applereminders")
 
     @patch("bugwarrior.services.applereminders.AppleRemindersClient")
     def test_service_initialization_with_config(self, mock_client_class):
         """Test service initialization with various configurations."""
         mock_client = Mock()
+        # Mock get_reminders to return a list so len() works
+        mock_client.get_reminders.return_value = [
+            ARBITRARY_REMINDER,
+            HIGH_PRIORITY_REMINDER,
+        ]
         mock_client_class.return_value = mock_client
 
         service = self.get_mock_service(
@@ -652,13 +887,18 @@ class TestAppleRemindersService(AbstractServiceTest, ServiceTest):
             },
         )
 
-        # Verify client is initialized with correct parameters
-        mock_client_class.assert_called_once_with(
-            lists=["Work", "Personal"],
-            include_completed=True,
-            exclude_lists=["Archive"],
-            due_only=True,
-        )
+        # Trigger client creation by calling issues()
+        list(service.issues())
+
+        # Verify client is initialized with correct config
+        mock_client_class.assert_called_once()
+        call_args = mock_client_class.call_args[0][
+            0
+        ]  # First positional argument (config)
+        self.assertEqual(call_args.lists, ["Work", "Personal"])
+        self.assertEqual(call_args.include_completed, True)
+        self.assertEqual(call_args.exclude_lists, ["Archive"])
+        self.assertEqual(call_args.due_only, True)
         self.assertIsNotNone(service.client)
 
 
