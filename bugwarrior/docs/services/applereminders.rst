@@ -17,7 +17,7 @@ Install Bugwarrior's Apple Reminders support with the ``applereminders`` extra:
 
     pip install bugwarrior[applereminders]
 
-This will install the required ``apple-reminders`` library dependency.
+This will install the required ``pyobjc-framework-EventKit`` library dependency.
 
 Example Service
 ---------------
