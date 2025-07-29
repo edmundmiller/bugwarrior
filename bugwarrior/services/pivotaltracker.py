@@ -1,3 +1,4 @@
+import logging
 import operator
 import re
 import typing
@@ -6,9 +7,8 @@ import requests
 from jinja2 import Template
 
 from bugwarrior import config
-from bugwarrior.services import Service, Issue, Client
+from bugwarrior.services import Client, Issue, Service
 
-import logging
 log = logging.getLogger(__name__)
 
 
@@ -211,10 +211,7 @@ class PivotalTrackerService(Service, Client):
         """
         subkey = params.pop('subkey', None)
 
-        url = "{path}/{endpoint}".format(
-            path=self.path,
-            endpoint=endpoint
-        )
+        url = f"{self.path}/{endpoint}"
         response = self.session.get(url, params=params)
         json_res = self.json_response(response)
 
@@ -242,15 +239,12 @@ class PivotalTrackerService(Service, Client):
 
     def get_tasks(self, project_id, story_id):
         tasks = self.api_request(
-            "projects/{project_id}/stories/{story_id}/tasks".format(
-                project_id=project_id,
-                story_id=story_id))
+            f"projects/{project_id}/stories/{story_id}/tasks")
         return tasks
 
     def get_blockers(self, project_id, story_id):
         blockers = self.api_request(
-            "projects/{project_id}/stories/{story_id}/blockers".format(
-                project_id=project_id, story_id=story_id)
+            f"projects/{project_id}/stories/{story_id}/blockers"
         )
         blocker_results = []
         for blocker in blockers:
@@ -263,8 +257,7 @@ class PivotalTrackerService(Service, Client):
 
     def get_user_by_id(self, project_id, user_ids):
         persons = self.api_request(
-            "projects/{project_id}/memberships".format(
-                project_id=project_id))
+            f"projects/{project_id}/memberships")
         user_list = filter(
             lambda x: x.get('id') in user_ids,
             map(operator.itemgetter('person'), persons)

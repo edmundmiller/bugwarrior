@@ -3,7 +3,7 @@ import responses
 from bugwarrior.collect import TaskConstructor
 from bugwarrior.services.taiga import TaigaService
 
-from .base import ServiceTest, AbstractServiceTest
+from .base import AbstractServiceTest, ServiceTest
 
 
 class TestTaigaIssue(AbstractServiceTest, ServiceTest):
@@ -66,8 +66,7 @@ class TestTaigaIssue(AbstractServiceTest, ServiceTest):
             json={'id': userid})
 
         self.add_response(
-            'https://one/api/v1/userstories?status__is_closed=false&assigned_to={}'.format(
-                userid),
+            f'https://one/api/v1/userstories?status__is_closed=false&assigned_to={userid}',
             json=[self.record])
 
         self.add_response(

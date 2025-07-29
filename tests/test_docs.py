@@ -1,4 +1,3 @@
-import docutils.core
 import glob
 import os.path
 import pathlib
@@ -6,8 +5,9 @@ import re
 import socket
 import subprocess
 import tempfile
-import unittest
 
+import docutils.core
+import pytest
 from importlib_metadata import entry_points
 
 DOCS_PATH = pathlib.Path(__file__).parent / '../bugwarrior/docs'
@@ -19,7 +19,7 @@ except OSError:
     INTERNET = False
 
 
-class ReadmeTest(unittest.TestCase):
+class ReadmeTest:
     def test_service_list(self):
 
         # GET README LISTED SERVICES
@@ -29,12 +29,12 @@ class ReadmeTest(unittest.TestCase):
             except AttributeError:  # not all nodes have attributes
                 return False
 
-        with open('README.rst', 'r') as f:
+        with open('README.rst') as f:
             readme = f.read()
 
         readme_document = docutils.core.publish_doctree(readme)
         service_list_search = readme_document.traverse(condition=is_services)
-        self.assertEqual(len(service_list_search), 1)
+        assert len(service_list_search) == 1
         service_list_element = service_list_search.pop()
         readme_listed_services = set(
             list_item.astext() for list_item in service_list_element.children)
@@ -42,25 +42,25 @@ class ReadmeTest(unittest.TestCase):
         # GET TITLES FROM SERVICE DOCUMENTATION FILES
         documented_services = set()
         for service in glob.iglob(str(DOCS_PATH / 'services' / '*.rst')):
-            with open(service, 'r') as f:
+            with open(service) as f:
                 firstline = f.readline().strip()
                 # ignore directives or empty lines
                 while firstline.startswith('.. _') or firstline == '':
                     firstline = f.readline().strip()
                 documented_services.add(firstline)
 
-        self.assertEqual(documented_services,  readme_listed_services)
+        assert documented_services == readme_listed_services
 
 
-class DocsTest(unittest.TestCase):
-    @unittest.skipIf(not INTERNET, 'no internet')
+class DocsTest:
+    @pytest.mark.skipif(not INTERNET, reason='no internet')
     def test_docs_build_without_warning(self):
         with tempfile.TemporaryDirectory() as buildDir:
             subprocess.run(
                 ['sphinx-build', '-n', '-W', '-v', str(DOCS_PATH), buildDir],
                 check=True)
 
-    @unittest.skipIf(not INTERNET, 'no internet')
+    @pytest.mark.skipif(not INTERNET, reason='no internet')
     def test_manpage_build_without_warning(self):
         with tempfile.TemporaryDirectory() as buildDir:
             subprocess.run(
@@ -78,4 +78,4 @@ class DocsTest(unittest.TestCase):
             if re.match(r'.*\.rst$', p):
                 documented_services.add(re.sub(r'\.rst$', '', p))
 
-        self.assertEqual(registered_services, documented_services)
+        assert registered_services == documented_services

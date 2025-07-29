@@ -1,13 +1,12 @@
 import logging
+import re
 import typing
+from datetime import datetime
 
 import requests
 
-import re
-from datetime import datetime
-
 from bugwarrior import config
-from bugwarrior.services import Service, Issue, Client
+from bugwarrior.services import Client, Issue, Service
 
 log = logging.getLogger(__name__)
 
@@ -290,18 +289,12 @@ class LogseqIssue(Issue):
             .strip()
             .split(" ")
         )
-        if len(date_split) == 2:  # <date day>
-            date = date_split[0]
-            date_format = "%Y-%m-%d"
-        elif len(date_split) == 3 and (
+        if len(date_split) == 2 or len(date_split) == 3 and (
             date_split[2][0] in ("+", ".")
-        ):  # <date day repeat>
+        ):  # <date day>
             date = date_split[0]
             date_format = "%Y-%m-%d"
-        elif len(date_split) == 3:  # <date day time>
-            date = date_split[0] + " " + date_split[2]
-            date_format = "%Y-%m-%d %H:%M"
-        elif len(date_split) == 4:  # <date date time repeat>
+        elif len(date_split) == 3 or len(date_split) == 4:  # <date day time>
             date = date_split[0] + " " + date_split[2]
             date_format = "%Y-%m-%d %H:%M"
         else:

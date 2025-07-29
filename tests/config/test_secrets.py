@@ -1,9 +1,7 @@
-import unittest
-
 from bugwarrior.config import secrets
 
 
-class TestOracleEval(unittest.TestCase):
+class TestOracleEval:
 
     def test_echo(self):
-        self.assertEqual(secrets.oracle_eval("echo fööbår"), "fööbår")
+        assert secrets.oracle_eval("echo fööbår") == "fööbår"

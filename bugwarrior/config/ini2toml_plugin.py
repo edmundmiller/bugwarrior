@@ -2,8 +2,8 @@ import logging
 import re
 import typing
 
-from ini2toml.types import IntermediateRepr, Translator
 import pydantic.v1
+from ini2toml.types import IntermediateRepr, Translator
 from pydantic.v1 import BaseModel
 
 from .schema import ConfigList

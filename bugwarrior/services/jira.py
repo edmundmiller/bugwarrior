@@ -326,7 +326,7 @@ class JiraIssue(Issue):
         value = self.record['fields'].get('priority')
         try:
             value = value['name']
-        except (TypeError, ):
+        except TypeError:
             value = str(value)
         # priority.name format: "1 - Critical"
         map_key = value.strip().split()[-1]
@@ -355,7 +355,7 @@ class JiraIssue(Issue):
     def get_parent(self):
         try:
             parent = self.record['fields']['parent']['key']
-        except (KeyError, ):
+        except KeyError:
             return None
 
         return parent

@@ -6,7 +6,7 @@ import requests
 from dateutil.tz import tzutc
 
 from bugwarrior import config
-from bugwarrior.services import Service, Issue, Client
+from bugwarrior.services import Client, Issue, Service
 
 log = logging.getLogger(__name__)
 
@@ -194,10 +194,10 @@ class NextcloudDeckService(Service):
         comments = (self.client.get_comments(card['id'])['ocs']['data']
                     if self.main_config.annotation_comments else [])
         return self.build_annotations(
-            ((
+            (
                 comment['actorDisplayName'],
                 comment['message'],
-            ) for comment in comments))
+            ) for comment in comments)
 
     def issues(self):
         for board in self.client.get_boards():

@@ -1,6 +1,6 @@
 import logging
-import sys
 import subprocess
+import sys
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +78,5 @@ def oracle_eval(command):
         return p.stdout.readline().strip().decode('utf-8')
     else:
         log.critical(
-            "Error retrieving password: `{command}` returned '{error}'".format(
-                command=command, error=p.stderr.read().strip()))
+            f"Error retrieving password: `{command}` returned '{p.stderr.read().strip()}'")
         sys.exit(1)

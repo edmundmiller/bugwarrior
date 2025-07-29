@@ -1,21 +1,20 @@
 import functools
+import getpass
+import logging
 import os
 import sys
 
+import click
 from lockfile import LockTimeout
 from lockfile.pidlockfile import PIDLockFile
 
-import getpass
-import click
-
-from bugwarrior.config import get_keyring, get_config_path, load_config
 from bugwarrior.collect import aggregate_issues, get_service
+from bugwarrior.config import get_config_path, get_keyring, load_config
 from bugwarrior.db import (
     get_defined_udas_as_strings,
     synchronize,
 )
 
-import logging
 log = logging.getLogger(__name__)
 
 
@@ -229,6 +228,6 @@ def ini2toml(rcfile):
             '    pip install bugwarrior[ini2toml]')
     if os.path.splitext(rcfile)[-1] == '.toml':
         raise SystemExit(f'{rcfile} is already toml!')
-    with open(rcfile, 'r') as f:
+    with open(rcfile) as f:
         bugwarriorrc = f.read()
     print(Translator().translate(bugwarriorrc, 'bugwarriorrc'))

@@ -1,15 +1,13 @@
 import logging
-
-from todoist_api_python.api import TodoistAPI
-import typing_extensions
-
-from datetime import datetime, time
 from dataclasses import asdict
+from datetime import datetime, time
+
+import typing_extensions
+from todoist_api_python.api import TodoistAPI
+from todoist_api_python.models import Task
 
 from bugwarrior import config
-from bugwarrior.services import Service, Issue, Client
-
-from todoist_api_python.models import Task
+from bugwarrior.services import Client, Issue, Service
 
 log = logging.getLogger(__name__)
 
@@ -272,7 +270,7 @@ class TodoistService(Service):
         }
         user_index = {
             user.id: f"{user.name} <{user.email}>"
-            for project in project_index.keys()
+            for project in project_index
             for user in self.client.get_users(project)
         }
 

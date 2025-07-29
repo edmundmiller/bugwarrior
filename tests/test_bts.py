@@ -1,5 +1,5 @@
 import sys
-from unittest import mock, SkipTest
+from unittest import SkipTest, mock
 
 from bugwarrior.collect import TaskConstructor
 
@@ -10,7 +10,7 @@ if sys.version_info >= (3, 11):
 
 from bugwarrior.services import bts
 
-from .base import ServiceTest, AbstractServiceTest
+from .base import AbstractServiceTest, ServiceTest
 
 
 class FakeBTSBug:

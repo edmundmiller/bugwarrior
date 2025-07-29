@@ -1,14 +1,13 @@
-from unittest import mock
-from .base import AbstractServiceTest, ServiceTest
-
 import copy
 from datetime import datetime
+from unittest import mock
+
+from todoist_api_python.models import Collaborator, Deadline, Due, Duration, Project, Section, Task
 
 from bugwarrior.collect import TaskConstructor
-from bugwarrior.services.todoist import TodoistService, TodoistClient
+from bugwarrior.services.todoist import TodoistClient, TodoistService
 
-from todoist_api_python.models import Task, Project, Section, Collaborator
-from todoist_api_python.models import Due, Deadline, Duration
+from .base import AbstractServiceTest, ServiceTest
 
 
 class TestTodoistIssue(AbstractServiceTest, ServiceTest):

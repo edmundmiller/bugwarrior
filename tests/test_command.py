@@ -1,7 +1,7 @@
-import os
 import logging
+import os
 import pathlib
-from unittest import mock, TestCase
+from unittest import TestCase, mock
 
 from click.testing import CliRunner
 
@@ -9,7 +9,7 @@ from bugwarrior import command
 from bugwarrior.config.load import BugwarriorConfigParser
 
 from .base import ConfigTest
-from .test_github import ARBITRARY_ISSUE, ARBITRARY_EXTRA
+from .test_github import ARBITRARY_EXTRA, ARBITRARY_ISSUE
 
 
 def fake_github_issues(self):
@@ -204,5 +204,5 @@ class TestIni2Toml(TestCase):
         self.assertEqual(result.exit_code, 0)
 
         self.maxDiff = None
-        with open(basedir / 'config/example-bugwarrior.toml', 'r') as f:
+        with open(basedir / 'config/example-bugwarrior.toml') as f:
             self.assertEqual(result.stdout, f.read())

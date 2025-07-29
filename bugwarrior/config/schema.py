@@ -283,8 +283,7 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
         __base__=SchemaBase,
         __validators__={'compute_target': get_target_validator(targets)},
         general=(MainSectionConfig, ...),
-        flavor={flavor: (MainSectionConfig, ...)
-                for flavor in config.get('flavor', {}).values()},
+        flavor=dict.fromkeys(config.get('flavor', {}).values(), (MainSectionConfig, ...)),
         **target_schemas)
 
     # Validate
