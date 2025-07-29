@@ -21,7 +21,7 @@ class AppleRemindersConfig(config.ServiceConfig):
 
 
 class AppleRemindersClient(Client):
-    """Client for Apple Reminders using EventKit framework."""
+    """Client for Apple Reminders using PyObjC EventKit framework."""
 
     def __init__(self, config: AppleRemindersConfig):
         self.config = config
@@ -31,78 +31,122 @@ class AppleRemindersClient(Client):
         self.due_only = config.due_only
 
         try:
-            import EventKit
-            import Foundation
-            self.EventKit = EventKit
-            self.Foundation = Foundation
-
-            # Create event store and request access
-            self.store = EventKit.EKEventStore.alloc().init()
+            from EventKit import EKEventStore, EKEntityTypeReminder
+            from Foundation import NSDate
+            
+            self.EKEventStore = EKEventStore
+            self.EKEntityTypeReminder = EKEntityTypeReminder
+            self.NSDate = NSDate
+            
+            # Create event store
+            self.event_store = EKEventStore.alloc().init()
+            
+            # Request access to reminders
             self._request_access()
+            
+            log.info("Successfully connected to Apple Reminders via EventKit")
 
         except ImportError as e:
-            log.error("Failed to import EventKit framework. This service only works on macOS.")
+            log.error("Failed to import EventKit/Foundation from PyObjC. This service only works on macOS with PyObjC installed.")
             raise ImportError(
                 "EventKit framework not available. "
-                "Make sure you're on macOS and have pyobjc-framework-EventKit installed."
+                "Make sure you're on macOS and have PyObjC installed (pip install pyobjc-framework-EventKit)."
             ) from e
         except Exception as e:
             log.error("Failed to initialize Apple Reminders connection: %s", e)
             raise
 
     def _request_access(self):
-        """Request access to reminders."""
+        """Request access to reminders and wait for permission."""
+        import time
+        
         # Check if we already have access
-        status = self.EventKit.EKEventStore.authorizationStatusForEntityType_(
-            self.EventKit.EKEntityTypeReminder
-        )
-
-        if status == self.EventKit.EKAuthorizationStatusAuthorized:
+        has_access = self.event_store.accessGrantedForEntityType_(self.EKEntityTypeReminder)
+        if has_access:
             log.debug("Already have access to reminders")
             return
-
-        # Request access if needed
-        if status == self.EventKit.EKAuthorizationStatusNotDetermined:
-            log.info("Requesting access to reminders...")
-            granted = [None]
-            error = [None]
-
-            def completion_handler(granted_val, error_val):
-                granted[0] = granted_val
-                error[0] = error_val
-
-            self.store.requestAccessToEntityType_completion_(
-                self.EventKit.EKEntityTypeReminder,
+        
+        # For modern macOS, we should try the newer access request methods first
+        try:
+            # Try requesting full access to reminders (macOS 14+)
+            if hasattr(self.event_store, 'requestFullAccessToRemindersWithCompletion_'):
+                log.info("Requesting full access to reminders...")
+                access_granted = [False]
+                request_complete = [False]
+                
+                def full_access_completion_handler(granted, error):
+                    access_granted[0] = granted
+                    request_complete[0] = True
+                    if error:
+                        log.error("Error requesting full access: %s", error)
+                
+                self.event_store.requestFullAccessToRemindersWithCompletion_(full_access_completion_handler)
+                
+                # Wait for response (up to 10 seconds)
+                for _ in range(100):  # 10 seconds with 0.1s intervals
+                    if request_complete[0]:
+                        if access_granted[0]:
+                            log.info("Full access to reminders granted")
+                            return
+                        else:
+                            log.warning("Full access to reminders denied, trying standard access...")
+                        break
+                    time.sleep(0.1)
+        
+        except Exception as e:
+            log.debug("Full access request not available or failed: %s", e)
+        
+        # Fallback to standard access request
+        log.info("Requesting standard access to reminders...")
+        access_granted = [False]
+        request_complete = [False]
+        
+        def completion_handler(granted, error):
+            access_granted[0] = granted
+            request_complete[0] = True
+            if error:
+                log.error("Error requesting access: %s", error)
+        
+        try:
+            self.event_store.requestAccessToEntityType_completion_(
+                self.EKEntityTypeReminder, 
                 completion_handler
             )
-
-            # Wait for completion
-            import time
-            for _ in range(50):  # 5 seconds timeout
-                if granted[0] is not None:
+            
+            # Wait for response (up to 10 seconds)
+            for _ in range(100):  # 10 seconds with 0.1s intervals
+                if request_complete[0]:
+                    if access_granted[0]:
+                        log.info("Access to reminders granted")
+                        return
                     break
                 time.sleep(0.1)
-
-            if not granted[0]:
-                raise PermissionError(
-                    "Access to reminders was denied. "
-                    "Please grant access in System Settings > Privacy & Security > Reminders"
-                )
-        elif status == self.EventKit.EKAuthorizationStatusDenied:
-            raise PermissionError(
-                "Access to reminders was denied. "
-                "Please grant access in System Settings > Privacy & Security > Reminders"
-            )
+        
+        except Exception as e:
+            log.error("Failed to request access: %s", e)
+        
+        # Final check to see if we have access now
+        has_access = self.event_store.accessGrantedForEntityType_(self.EKEntityTypeReminder)
+        if has_access:
+            log.info("Access to reminders verified")
+            return
+        
+        # If we still don't have access, provide helpful error message
+        raise PermissionError(
+            "Access to Apple Reminders is required but not granted. Please:\n"
+            "1. Grant access when prompted by macOS\n"
+            "2. Or go to System Settings > Privacy & Security > Reminders\n"
+            "3. Ensure your terminal or application has access to Reminders"
+        )
 
     def get_reminder_lists(self):
-        """Get all reminder lists."""
+        """Get all reminder calendars."""
         try:
-            calendars = self.store.calendarsForEntityType_(
-                self.EventKit.EKEntityTypeReminder
-            )
-            return [cal for cal in calendars if cal is not None]
+            calendars = self.event_store.calendarsForEntityType_(self.EKEntityTypeReminder)
+            log.debug("Found %d reminder calendars", len(calendars))
+            return calendars
         except Exception as e:
-            log.error("Failed to get reminder lists: %s", e)
+            log.error("Failed to get reminder calendars: %s", e)
             raise
 
     def _should_include_list(self, list_name):
@@ -117,113 +161,176 @@ class AppleRemindersClient(Client):
         """Get all reminders based on configuration."""
         reminders = []
 
-        lists = self.get_reminder_lists()
-        for calendar in lists:
-            list_name = str(calendar.title())
-            if not self._should_include_list(list_name):
-                log.debug("Skipping list: %s", list_name)
-                continue
-
-            # Create predicate for this calendar
-            predicate = self.store.predicateForRemindersInCalendars_([calendar])
-
-            # Fetch reminders synchronously
-            fetched_reminders = self.store.remindersMatchingPredicate_(predicate)
-
-            for reminder in fetched_reminders:
-                if not self.include_completed and reminder.isCompleted():
+        try:
+            # Get all reminder calendars
+            calendars = self.get_reminder_lists()
+            
+            for calendar in calendars:
+                calendar_name = str(calendar.title())
+                
+                # Check if this calendar should be included
+                if not self._should_include_list(calendar_name):
+                    log.debug("Skipping calendar: %s", calendar_name)
                     continue
+                
+                # Get reminders from this calendar
+                calendar_reminders = self._get_reminders_from_calendar(calendar)
+                
+                for reminder in calendar_reminders:
+                    # Apply completion filter
+                    if not self.include_completed and reminder.isCompleted():
+                        continue
 
-                if self.due_only and not reminder.dueDateComponents():
-                    continue
+                    # Apply due_only filter
+                    if self.due_only and not reminder.dueDateComponents():
+                        continue
 
-                reminders.append(self._reminder_to_dict(reminder, list_name))
+                    reminders.append(self._reminder_to_dict(reminder, calendar_name))
 
+            log.debug("Filtered to %d reminders", len(reminders))
+            return reminders
+
+        except Exception as e:
+            log.error("Failed to get reminders: %s", e)
+            raise
+
+    def _get_reminders_from_calendar(self, calendar):
+        """Get all reminders from a specific calendar."""
+        from Foundation import NSPredicate, NSDate
+        
+        # Create predicate to fetch all reminders from this calendar
+        # We'll get both completed and incomplete reminders, then filter later
+        predicate = self.event_store.predicateForRemindersInCalendars_([calendar])
+        
+        # Fetch reminders synchronously
+        reminders = []
+        fetch_complete = [False]
+        
+        def completion_handler(reminder_list):
+            reminders.extend(reminder_list or [])
+            fetch_complete[0] = True
+        
+        self.event_store.fetchRemindersMatchingPredicate_completion_(
+            predicate,
+            completion_handler
+        )
+        
+        # Wait for fetch to complete (up to 5 seconds)
+        import time
+        for _ in range(50):  # 5 seconds with 0.1s intervals
+            if fetch_complete[0]:
+                break
+            time.sleep(0.1)
+        
         return reminders
 
     def _reminder_to_dict(self, reminder, list_name):
-        """Convert an EKReminder object to a dictionary."""
+        """Convert an EventKit reminder object to a dictionary."""
         try:
             # Get basic fields
             data = {
-                'id': str(reminder.calendarItemExternalIdentifier()),
-                'title': str(reminder.title()) if reminder.title() else '',
-                'notes': str(reminder.notes()) if reminder.notes() else '',
+                'id': str(reminder.calendarItemIdentifier()),
+                'title': str(reminder.title() or ''),
+                'notes': str(reminder.notes() or ''),
                 'completed': bool(reminder.isCompleted()),
                 'list_name': list_name,
-                'url': (
-                    f"x-apple-reminderkit://REMCDReminder/"
-                    f"{str(reminder.calendarItemExternalIdentifier())}"
-                ),
-                'flagged': False,  # EventKit doesn't expose flagged status directly
+                'url': f"x-apple-reminderkit://REMCDReminder/{reminder.calendarItemIdentifier()}",
+                'flagged': bool(getattr(reminder, 'isFlagged', lambda: False)()),
             }
 
             # Handle dates
-            if reminder.dueDateComponents():
-                due_components = reminder.dueDateComponents()
-                # Create date from components
-                data['due_date'] = self._components_to_datetime(due_components)
-            else:
-                data['due_date'] = None
+            data['due_date'] = self._format_date_components(reminder.dueDateComponents())
+            data['creation_date'] = self._format_nsdate(reminder.creationDate())
+            data['modification_date'] = self._format_nsdate(reminder.lastModifiedDate())
+            data['completion_date'] = self._format_nsdate(reminder.completionDate())
 
-            if reminder.completionDate():
-                data['completion_date'] = reminder.completionDate()
-            else:
-                data['completion_date'] = None
-
-            if reminder.creationDate():
-                data['creation_date'] = reminder.creationDate()
-            else:
-                data['creation_date'] = None
-
-            if reminder.lastModifiedDate():
-                data['modification_date'] = reminder.lastModifiedDate()
-            else:
-                data['modification_date'] = None
-
-            # Map priority (EventKit uses 0=none, 1-4=high, 5=medium, 6-9=low)
+            # Map priority (EventKit uses 0=none, 1-4=low, 5=medium, 6-9=high)
             priority = reminder.priority()
             if priority == 0:
-                data['priority'] = 0
+                data['priority'] = 0  # none
             elif 1 <= priority <= 4:
-                data['priority'] = 9  # High
+                data['priority'] = 1  # low
             elif priority == 5:
-                data['priority'] = 5  # Medium
+                data['priority'] = 5  # medium
+            elif 6 <= priority <= 9:
+                data['priority'] = 9  # high
             else:
-                data['priority'] = 1  # Low
+                data['priority'] = 0
 
             return data
 
         except Exception as e:
             log.error("Failed to convert reminder to dict: %s", e)
             # Return minimal data on error
-            try:
-                fallback_title = str(reminder.title()) if reminder.title() else 'Error'
-            except Exception:
-                fallback_title = 'Error'
             return {
-                'id': 'error',
-                'title': fallback_title,
+                'id': str(getattr(reminder, 'calendarItemIdentifier', lambda: 'error')()),
+                'title': str(getattr(reminder, 'title', lambda: 'Error')() or 'Error'),
                 'notes': '',
                 'completed': False,
                 'list_name': list_name,
                 'priority': 0,
+                'due_date': None,
+                'creation_date': None,
+                'modification_date': None,
+                'completion_date': None,
+                'url': '',
+                'flagged': False,
             }
 
-    def _components_to_datetime(self, components):
-        """Convert NSDateComponents to datetime string."""
+    def _format_nsdate(self, nsdate):
+        """Format NSDate object to ISO string."""
+        if not nsdate:
+            return None
+        
         try:
-            # Get calendar and create date
-            calendar = self.Foundation.NSCalendar.currentCalendar()
-            date = calendar.dateFromComponents_(components)
-            if date:
-                # Convert to Python datetime
-                timestamp = date.timeIntervalSince1970()
-                dt = datetime.fromtimestamp(timestamp)
-                return dt.isoformat()
+            # Convert NSDate to timestamp and then to datetime
+            timestamp = nsdate.timeIntervalSince1970()
+            dt = datetime.fromtimestamp(timestamp)
+            return dt.isoformat()
         except Exception as e:
-            log.error("Failed to convert date components: %s", e)
-        return None
+            log.error("Failed to format NSDate: %s", e)
+            return None
+
+    def _format_date_components(self, date_components):
+        """Format NSDateComponents object to ISO string."""
+        if not date_components:
+            return None
+        
+        try:
+            # Extract date components
+            year = date_components.year()
+            month = date_components.month()
+            day = date_components.day()
+            hour = getattr(date_components, 'hour', lambda: 0)()
+            minute = getattr(date_components, 'minute', lambda: 0)()
+            second = getattr(date_components, 'second', lambda: 0)()
+            
+            # Check for invalid values (NSDateComponents uses NSIntegerMax for unset values)
+            # NSIntegerMax is typically 9223372036854775807 on 64-bit systems
+            max_val = 2147483647  # Use a reasonable max value
+            if any(val > max_val for val in [year, month, day, hour, minute, second] if val != -1):
+                return None
+                
+            # Validate ranges
+            if year == -1 or year < 1 or year > 9999:
+                return None
+            if month == -1 or month < 1 or month > 12:
+                month = 1
+            if day == -1 or day < 1 or day > 31:
+                day = 1
+            if hour == -1 or hour < 0 or hour > 23:
+                hour = 0
+            if minute == -1 or minute < 0 or minute > 59:
+                minute = 0
+            if second == -1 or second < 0 or second > 59:
+                second = 0
+            
+            # Create datetime object
+            dt = datetime(year, month, day, hour, minute, second)
+            return dt.isoformat()
+        except Exception as e:
+            log.error("Failed to format date components: %s", e)
+            return None
 
 
 class AppleRemindersIssue(Issue):
@@ -236,7 +343,7 @@ class AppleRemindersIssue(Issue):
     LIST = 'applereminderslist'
     URL = 'appleremindersurl'
     FLAGGED = 'appleremindersflagged'
-    UNIQUE_KEY = 'appleremindersid'
+    UNIQUE_KEY = ('appleremindersid',)
 
     UDAS = {
         TITLE: {'type': 'string', 'label': 'Apple Reminders Title'},
@@ -259,9 +366,14 @@ class AppleRemindersIssue(Issue):
         # If it's already a string (ISO format), parse it
         if isinstance(date_value, str):
             try:
-                dt = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                # Handle both with and without timezone
+                if 'T' in date_value:
+                    dt = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(date_value)
                 return dt.strftime('%Y%m%dT%H%M%SZ')
-            except Exception:
+            except Exception as e:
+                log.error("Failed to parse ISO date string: %s", e)
                 return None
 
         # If it's an NSDate object, convert to timestamp
@@ -269,7 +381,8 @@ class AppleRemindersIssue(Issue):
             timestamp = date_value.timeIntervalSince1970()
             dt = datetime.fromtimestamp(timestamp)
             return dt.strftime('%Y%m%dT%H%M%SZ')
-        except Exception:
+        except Exception as e:
+            log.error("Failed to convert NSDate: %s", e)
             return None
 
     def to_taskwarrior(self):

@@ -20,9 +20,12 @@ dependencies = [
   "jinja2>=2.7.2",
   "lockfile>=0.9.1",
   "pydantic[email]>=2",
+  "pyobjc-framework-eventkit>=11.1",
+  "pytest>=8.4.1",
   "python-dateutil",
   "pytz",
   "requests",
+  "responses>=0.25.7",
   "taskw>=0.8",
   # Needed for backwards compatibility with python<=3.10.
   "tomli",
@@ -99,6 +102,9 @@ bugwarrior = "bugwarrior.config.ini2toml_plugin:activate"
 
 [tool.setuptools]
 packages = ["bugwarrior"]
+
+[tool.uv.sources]
+apple-reminders = { git = "https://github.com/luizribeiro/apple-reminders.git" }
 
 [build-system]
 requires = ["setuptools"]
