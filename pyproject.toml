@@ -4,7 +4,7 @@ version = "2.0.0-alpha"
 description = "a command line utility for updating your local taskwarrior database from your forge issue trackers"
 readme = "bugwarrior/README.rst"
 # Needed for pydantic>1.8.
-requires-python = ">3.8,<4"
+requires-python = ">=3.9,<4"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE.txt"]
 keywords=["task", "taskwarrior", "todo", "github"]
@@ -21,9 +21,12 @@ dependencies = [
   "jinja2>=2.7.2",
   "lockfile>=0.9.1",
   "pydantic[email]>=2",
+  "pyobjc-framework-eventkit>=11.1",
+  "pytest>=8.4.1",
   "python-dateutil",
   "pytz",
   "requests",
+  "responses>=0.25.7",
   "taskw>=0.8",
   # Needed for backwards compatibility with python<=3.10.
   "tomli",
@@ -97,6 +100,9 @@ bugwarrior = "bugwarrior.config.ini2toml_plugin:activate"
 
 [tool.setuptools]
 packages = ["bugwarrior"]
+
+[tool.uv.sources]
+apple-reminders = { git = "https://github.com/luizribeiro/apple-reminders.git" }
 
 [build-system]
 requires = ["setuptools"]
