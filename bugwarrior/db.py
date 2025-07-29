@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import subprocess
 
@@ -8,7 +9,6 @@ from taskw.exceptions import TaskwarriorError
 from bugwarrior.collect import get_service
 from bugwarrior.notifications import send_notification
 
-import logging
 log = logging.getLogger(__name__)
 
 
@@ -383,11 +383,7 @@ def synchronize(issue_generator, conf, main_section, dry_run=False):
     log.info("Updating %i tasks", len(issue_updates['changed']))
     for issue in issue_updates['changed']:
         changes = '; '.join([
-            '{field}: {f} -> {t}'.format(
-                field=field,
-                f=repr(ch[0]),
-                t=repr(ch[1])
-            )
+            f'{field}: {repr(ch[0])} -> {repr(ch[1])}'
             for field, ch in issue.get_changes(keep=True).items()
         ])
         log.info(

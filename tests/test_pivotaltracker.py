@@ -1,12 +1,12 @@
 import datetime
 
-from dateutil.tz import tzutc
 import responses
+from dateutil.tz import tzutc
 
 from bugwarrior.collect import TaskConstructor
 from bugwarrior.services.pivotaltracker import PivotalTrackerService
 
-from .base import ServiceTest, AbstractServiceTest, ConfigTest
+from .base import AbstractServiceTest, ConfigTest, ServiceTest
 
 PROJECT = {
     'account_id': 100,

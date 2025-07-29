@@ -1,8 +1,5 @@
 import abc
-import shutil
 import os.path
-import tempfile
-import unittest
 
 import pytest
 import responses
@@ -31,14 +28,16 @@ class AbstractServiceTest(abc.ABC):
         raise NotImplementedError
 
 
-class ConfigTest(unittest.TestCase):
+class ConfigTest:
     """
     Creates config files, configures the environment, and cleans up afterwards.
     """
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_config_test(self, caplog, tmp_path):
+        self.caplog = caplog
         self.old_environ = os.environ.copy()
-        self.tempdir = tempfile.mkdtemp(prefix='bugwarrior')
+        self.tempdir = str(tmp_path)
 
         # Create temporary config files.
         self.taskrc = os.path.join(self.tempdir, '.taskrc')
@@ -54,28 +53,23 @@ class ConfigTest(unittest.TestCase):
         os.environ.pop('TASKRC', None)
         os.environ.pop('XDG_CONFIG_DIRS', None)
 
-    def tearDown(self):
-        shutil.rmtree(self.tempdir, ignore_errors=True)
-        os.environ = self.old_environ
+        yield
 
-    @pytest.fixture(autouse=True)
-    def inject_fixtures(self, caplog):
-        self.caplog = caplog
+        # Cleanup
+        os.environ = self.old_environ
 
     def validate(self):
         self.config['general'] = self.config.get('general', {})
         self.config['general']['interactive'] = False
         return schema.validate_config(self.config, 'general', 'configpath')
 
-    def assertValidationError(self, expected):
-
-        with self.assertRaises(SystemExit):
+    def assert_validation_error(self, expected):
+        with pytest.raises(SystemExit):
             self.validate()
 
         # Only one message should be logged.
-        self.assertEqual(len(self.caplog.records), 1)
-
-        self.assertIn(expected, self.caplog.records[0].message)
+        assert len(self.caplog.records) == 1
+        assert expected in self.caplog.records[0].message
 
         # We may want to use this assertion more than once per test.
         self.caplog.clear()
@@ -89,10 +83,6 @@ class ServiceTest(ConfigTest):
     }
     SERVICE_CONFIG = {
     }
-
-    @classmethod
-    def setUpClass(cls):
-        cls.maxDiff = None
 
     def get_mock_service(
         self, service_class, section='unspecified',

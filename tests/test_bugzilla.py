@@ -1,11 +1,11 @@
 import datetime
-from unittest import mock
 from collections import namedtuple
+from unittest import mock
 
 from bugwarrior.collect import TaskConstructor
 from bugwarrior.services.bz import BugzillaService
 
-from .base import ConfigTest, ServiceTest, AbstractServiceTest
+from .base import AbstractServiceTest, ConfigTest, ServiceTest
 
 
 class FakeBugzillaLib:

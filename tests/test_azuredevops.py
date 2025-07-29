@@ -11,7 +11,6 @@ from bugwarrior.services.azuredevops import (
 
 from .base import AbstractServiceTest, ConfigTest, ServiceTest
 
-
 TEST_ISSUE = {
     "_links": {
         "fields": {

@@ -4,12 +4,12 @@ import pytz
 import responses
 
 from bugwarrior.collect import TaskConstructor
-from bugwarrior.services.gitlab import GitlabService, GitlabClient
+from bugwarrior.services.gitlab import GitlabClient, GitlabService
 
-from .base import ConfigTest, ServiceTest, AbstractServiceTest
+from .base import AbstractServiceTest, ConfigTest, ServiceTest
 
 
-class TestData():
+class TestData:
     def __init__(self):
         self.arbitrary_created = (
             datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)

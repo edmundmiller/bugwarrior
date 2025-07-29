@@ -2,7 +2,6 @@ import re
 import typing
 import unittest.mock
 
-
 from bugwarrior import config, services
 from bugwarrior.config import schema
 
@@ -81,7 +80,7 @@ class ServiceBase(ConfigTest):
         appear once. This should ensure that these methods are declared here
         but not called.
         """
-        with open(services.__file__, 'r') as f:
+        with open(services.__file__) as f:
             base = f.read()
 
         for method in klass.__abstractmethods__:

@@ -12,7 +12,7 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 from bugwarrior import config
-from bugwarrior.services import Service, Issue
+from bugwarrior.services import Issue, Service
 
 log = logging.getLogger(__name__)
 

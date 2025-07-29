@@ -3,20 +3,20 @@ Service API
 -----------
 """
 import abc
+import logging
 import os
 import re
 import typing
 
-from dateutil.parser import parse as parse_date
-from dateutil.tz import tzlocal
 import dogpile.cache
-from jinja2 import Template
 import pytz
 import requests
+from dateutil.parser import parse as parse_date
+from dateutil.tz import tzlocal
+from jinja2 import Template
 
 from bugwarrior.config import schema, secrets
 
-import logging
 log = logging.getLogger(__name__)
 
 DOGPILE_CACHE_PATH = os.path.expanduser(''.join([

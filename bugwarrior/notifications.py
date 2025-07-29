@@ -4,7 +4,6 @@ import warnings
 
 import requests
 
-
 cache_dir = os.path.expanduser(os.getenv('XDG_CACHE_HOME', "~/.cache") + "/bugwarrior")
 logo_path = cache_dir + "/logo.png"
 logo_url = "https://upload.wikimedia.org/wikipedia/" + \
@@ -103,7 +102,7 @@ def send_notification(issue, op, conf):
         subprocess.call([
             'osascript',
             '-e',
-            'display notification "{}" with title "Bugwarrior"'.format(escaped)
+            f'display notification "{escaped}" with title "Bugwarrior"'
         ])
         return
     elif notify_backend == 'gobject':

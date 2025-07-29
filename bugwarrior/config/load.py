@@ -126,8 +126,7 @@ class BugwarriorConfigParser(configparser.ConfigParser):
                 return None
             else:
                 raise ValueError(
-                    "{section}.{option} must be an integer or empty.".format(
-                        section=section, option=option))
+                    f"{section}.{option} must be an integer or empty.")
 
     @staticmethod
     def optionxform(option):
