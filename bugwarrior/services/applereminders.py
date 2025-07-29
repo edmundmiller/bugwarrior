@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 
 import typing_extensions
@@ -113,36 +114,45 @@ class AppleRemindersClient(Client):
         """Convert apple-reminders Reminder object to dictionary."""
         try:
             return {
-                'id': reminder.id,
-                'title': reminder.title or '',
-                'notes': reminder.notes or '',
-                'due_date': reminder.due_date,
-                'completed': reminder.completed,
-                'completion_date': reminder.completion_date,
-                'creation_date': reminder.creation_date,
-                'modification_date': reminder.modification_date,
-                'priority': reminder.priority,  # 0=None, 1=Low, 5=Medium, 9=High
-                'list_name': list_name,
-                'url': f"x-apple-reminderkit://REMCDReminder/{reminder.id}",
-                'flagged': getattr(reminder, 'flagged', False),
-                'subtasks': getattr(reminder, 'subtasks', []),
+                "id": reminder.id,
+                "title": reminder.title or "",
+                "notes": reminder.notes or "",
+                "due_date": reminder.due_date,
+                "completed": reminder.completed,
+                "completion_date": reminder.completion_date,
+                "creation_date": reminder.creation_date,
+                "modification_date": reminder.modification_date,
+                "priority": reminder.priority,  # 0=None, 1=Low, 5=Medium, 9=High
+                "list_name": list_name,
+                "url": f"x-apple-reminderkit://REMCDReminder/{reminder.id}",
+                "flagged": getattr(reminder, "flagged", False),
+                "subtasks": getattr(reminder, "subtasks", []),
             }
         except Exception as e:
             log.error(f"Failed to convert reminder to dict: {e}")
+            # Use safe getattr that catches exceptions
+
+            def safe_getattr(obj, attr, default):
+                try:
+                    return getattr(obj, attr, default)
+                except Exception:
+                    return default
+
+            reminder_id = safe_getattr(reminder, "id", "unknown")
             return {
-                'id': getattr(reminder, 'id', 'unknown'),
-                'title': getattr(reminder, 'title', 'Unknown Reminder'),
-                'notes': '',
-                'due_date': None,
-                'completed': False,
-                'completion_date': None,
-                'creation_date': None,
-                'modification_date': None,
-                'priority': 0,
-                'list_name': list_name,
-                'url': f"x-apple-reminderkit://REMCDReminder/{getattr(reminder, 'id', 'unknown')}",
-                'flagged': False,
-                'subtasks': [],
+                "id": reminder_id,
+                "title": "Unknown Reminder",
+                "notes": "",
+                "due_date": None,
+                "completed": False,
+                "completion_date": None,
+                "creation_date": None,
+                "modification_date": None,
+                "priority": 0,
+                "list_name": list_name,
+                "url": f"x-apple-reminderkit://REMCDReminder/{reminder_id}",
+                "flagged": False,
+                "subtasks": [],
             }
 
 
@@ -194,43 +204,35 @@ class AppleRemindersIssue(Issue):
     def to_taskwarrior(self):
         """Convert reminder to taskwarrior task format."""
 
-        # Parse dates
-        due_date = (
-            self.parse_date(self.record['due_date'])
-            if self.record['due_date']
-            else None
-        )
-        completion_date = (
-            self.parse_date(self.record['completion_date'])
-            if self.record['completion_date']
-            else None
-        )
-        creation_date = (
-            self.parse_date(self.record['creation_date'])
-            if self.record['creation_date']
-            else None
-        )
-        modification_date = (
-            self.parse_date(self.record['modification_date'])
-            if self.record['modification_date']
-            else None
-        )
+        # Handle dates - they may already be datetime objects from Apple Reminders
+
+        def handle_date(date_value):
+            if date_value is None:
+                return None
+            if isinstance(date_value, datetime):
+                return date_value
+            return self.parse_date(date_value)
+
+        due_date = handle_date(self.record["due_date"])
+        completion_date = handle_date(self.record["completion_date"])
+        creation_date = handle_date(self.record["creation_date"])
+        modification_date = handle_date(self.record["modification_date"])
 
         # Determine task status
-        status = "completed" if self.record['completed'] else "pending"
+        status = "completed" if self.record["completed"] else "pending"
 
         # Build tags from list name if configured
         tags = []
-        if self.config.import_labels_as_tags and self.record['list_name']:
+        if self.config.import_labels_as_tags and self.record["list_name"]:
             tags = self.get_tags_from_labels(
-                [self.record['list_name']],
-                toggle_option='import_labels_as_tags',
-                template_option='label_template',
-                template_variable='label',
+                [self.record["list_name"]],
+                toggle_option="import_labels_as_tags",
+                template_option="label_template",
+                template_variable="label",
             )
 
         task = {
-            "project": self.extra.get("project", self.record['list_name']),
+            "project": self.extra.get("project", self.record["list_name"]),
             "priority": self.get_priority(),
             "annotations": self.extra.get("annotations", []),
             "tags": tags,
@@ -240,28 +242,36 @@ class AppleRemindersIssue(Issue):
             "end": completion_date if status == "completed" else None,
             "modified": modification_date,
             # Apple Reminders specific fields
-            self.ID: self.record['id'],
-            self.TITLE: self.record['title'],
-            self.NOTES: self.record['notes'],
+            self.ID: self.record["id"],
+            self.TITLE: self.record["title"],
+            self.NOTES: self.record["notes"],
             self.DUE_DATE: due_date,
-            self.COMPLETED: int(self.record['completed']),
+            self.COMPLETED: int(self.record["completed"]),
             self.COMPLETION_DATE: completion_date,
             self.CREATION_DATE: creation_date,
             self.MODIFICATION_DATE: modification_date,
-            self.PRIORITY: self.record['priority'],
-            self.LIST_NAME: self.record['list_name'],
-            self.URL: self.record['url'],
-            self.FLAGGED: int(self.record['flagged']),
+            self.PRIORITY: self.record["priority"],
+            self.LIST_NAME: self.record["list_name"],
+            self.URL: self.record["url"],
+            self.FLAGGED: int(self.record["flagged"]),
         }
 
         return task
 
+    def get_priority(self):
+        """Get taskwarrior priority based on Apple Reminders priority."""
+        apple_priority = self.record["priority"]
+        mapped_priority = self.PRIORITY_MAP.get(apple_priority)
+        if mapped_priority is None:
+            return self.config.default_priority
+        return mapped_priority
+
     def get_default_description(self):
         """Get default description for this reminder."""
         return self.build_default_description(
-            title=self.record['title'],
-            url=self.record['url'],
-            number=self.record['id'],
+            title=self.record["title"],
+            url=self.record["url"],
+            number=self.record["id"],
             cls="task",
         )
 
@@ -297,10 +307,10 @@ class AppleRemindersService(Service):
         try:
             for reminder_record in self.client.get_reminders():
                 # Build extra data
-                extra = {"project": reminder_record['list_name'], "annotations": []}
+                extra = {"project": reminder_record["list_name"], "annotations": []}
 
                 # Add notes as annotation if present
-                if reminder_record['notes'] and self.main_config.annotation_comments:
+                if reminder_record["notes"] and self.main_config.annotation_comments:
                     extra["annotations"].append(f"Notes: {reminder_record['notes']}")
 
                 yield self.get_issue_for_record(reminder_record, extra)
