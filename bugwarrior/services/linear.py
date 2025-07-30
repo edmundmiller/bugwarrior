@@ -89,8 +89,8 @@ class LinearIssue(Issue):
             self.STATE: get(get(self.record, "state", {}), "name"),
             self.IDENTIFIER: get(self.record, "identifier"),
             self.TEAM: get(get(self.record, "team", {}), "name"),
-            self.CREATOR: get(get(self.record, "creator", {}), "name"),
-            self.ASSIGNEE: get(get(self.record, "assignee", {}), "name"),
+            self.CREATOR: get(get(self.record, "creator", {}), "email"),
+            self.ASSIGNEE: get(get(self.record, "assignee", {}), "email"),
             self.CREATED_AT: created,
             self.UPDATED_AT: modified,
             self.CLOSED_AT: closed,
@@ -136,9 +136,11 @@ class LinearService(Service, Client):
                   title
                   description
                   assignee {
-                    name
+                    email
                   }
-                  creator {name}
+                  creator {
+                    email
+                  }
                   completedAt
                   updatedAt
                   createdAt
