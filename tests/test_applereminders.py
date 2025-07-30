@@ -264,7 +264,7 @@ class TestAppleRemindersIssue(AbstractServiceTest, ServiceTest):
         self.assertIn('entry', actual_output)
 
         # Apple Reminders specific fields
-        self.assertEqual(actual_output[issue.UNIQUE_KEY], ARBITRARY_REMINDER['id'])
+        self.assertEqual(actual_output[issue.ID], ARBITRARY_REMINDER['id'])
         self.assertEqual(actual_output[issue.TITLE], ARBITRARY_REMINDER['title'])
         self.assertEqual(actual_output[issue.NOTES], ARBITRARY_REMINDER['notes'])
         self.assertEqual(actual_output[issue.LIST], ARBITRARY_REMINDER['list_name'])
@@ -306,7 +306,7 @@ class TestAppleRemindersIssue(AbstractServiceTest, ServiceTest):
         self.assertEqual(actual_output['status'], 'completed')
 
         # Apple Reminders specific fields
-        self.assertEqual(actual_output[issue.UNIQUE_KEY], COMPLETED_REMINDER['id'])
+        self.assertEqual(actual_output[issue.ID], COMPLETED_REMINDER['id'])
         self.assertEqual(actual_output[issue.TITLE], COMPLETED_REMINDER['title'])
         self.assertEqual(actual_output[issue.NOTES], COMPLETED_REMINDER['notes'])
         self.assertEqual(actual_output[issue.LIST], COMPLETED_REMINDER['list_name'])
