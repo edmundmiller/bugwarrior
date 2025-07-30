@@ -1,13 +1,13 @@
 import datetime
 import json
 
-from dateutil.tz import tzutc
 import responses
+from dateutil.tz import tzutc
 
 from bugwarrior.collect import TaskConstructor
 from bugwarrior.services.linear import LinearService
 
-from .base import ServiceTest, AbstractServiceTest, ConfigTest
+from .base import AbstractServiceTest, ConfigTest, ServiceTest
 
 RESPONSE = json.loads(
     """

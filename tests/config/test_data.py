@@ -2,6 +2,7 @@ import json
 import os
 
 import pytest
+
 from bugwarrior.config import data, schema
 
 from ..base import ConfigTest

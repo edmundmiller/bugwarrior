@@ -1,13 +1,12 @@
+import json
+import logging
 import re
 import typing
-import json
 
 import requests
 
 from bugwarrior import config
-from bugwarrior.services import Service, Issue, Client
-
-import logging
+from bugwarrior.services import Client, Issue, Service
 
 log = logging.getLogger(__name__)
 

@@ -5,6 +5,7 @@ import pathlib
 import textwrap
 
 import pytest
+
 try:
     import tomllib  # python>=3.11
 except ImportError:
@@ -44,49 +45,62 @@ class LoadTest(ConfigTest):
 
 
 class TestGetConfigPath(LoadTest):
-    def test_path_precedence(self):
-        # We're going to manually setup and teardown each subTest.
-        self.tearDown()
-
-        config_paths = [  # ordered by precedence
+    @pytest.mark.parametrize(
+        "path1,path2",
+        list(itertools.combinations([
             '.config/bugwarrior/bugwarriorrc',
             '.config/bugwarrior/bugwarrior.toml',
             '.bugwarriorrc',
             '.bugwarrior.toml',
-        ]
+        ], 2))
+    )
+    def test_path_precedence(self, path1, path2, tmp_path):
+        """
+        Test that config paths are selected in correct precedence order.
+        
+        https://docs.python.org/3/library/itertools.html#itertools.combinations
+        > The combination tuples are emitted in lexicographic ordering
+        > according to the order of the input iterable. So, if the input
+        > iterable is sorted, the output tuples will be produced in sorted
+        > order.
+        So as long as the path list is in the correct order, path1 should have
+        precedence.
+        """
+        # Set up temporary directory
+        old_home = os.environ.get('HOME')
+        os.environ['HOME'] = str(tmp_path)
 
-        # https://docs.python.org/3/library/itertools.html#itertools.combinations
-        # > The combination tuples are emitted in lexicographic ordering
-        # > according to the order of the input iterable. So, if the input
-        # > iterable is sorted, the output tuples will be produced in sorted
-        # > order.
-        # So as long as the path list is in the correct order, path1 should have
-        # precedence.
-        for path1, path2 in itertools.combinations(config_paths, 2):
-            with self.subTest(path1=path1, path2=path2):
-                self.setUp()
-                try:
-                    config1 = self.create(path1)
-                    self.create(path2)
-                    self.assertEqual(load.get_config_path(), config1)
-                finally:
-                    self.tearDown()
+        try:
+            # Create both config files
+            def create_file(path):
+                fpath = tmp_path / path
+                fpath.parent.mkdir(parents=True, exist_ok=True)
+                fpath.touch()
+                return str(fpath)
+
+            config1 = create_file(path1)
+            create_file(path2)
+
+            assert load.get_config_path() == config1
+        finally:
+            if old_home is not None:
+                os.environ['HOME'] = old_home
+            elif 'HOME' in os.environ:
+                del os.environ['HOME']
 
     def test_legacy(self):
         """
         Falls back on .bugwarriorrc if it exists
         """
         rc = self.create('.bugwarriorrc')
-        self.assertEqual(load.get_config_path(), rc)
+        assert load.get_config_path() == rc
 
     def test_no_file(self):
         """
         If no bugwarriorrc exist anywhere, the path to the prefered one is
         returned.
         """
-        self.assertEqual(
-            load.get_config_path(),
-            os.path.join(self.tempdir, '.config/bugwarrior/bugwarriorrc'))
+        assert load.get_config_path() == os.path.join(self.tempdir, '.config/bugwarrior/bugwarriorrc')
 
     def test_BUGWARRIORRC(self):
         """
@@ -97,7 +111,7 @@ class TestGetConfigPath(LoadTest):
         os.environ['BUGWARRIORRC'] = rc
         self.create('.bugwarriorrc')
         self.create('.config/bugwarrior/bugwarriorrc')
-        self.assertEqual(load.get_config_path(), rc)
+        assert load.get_config_path() == rc
 
     def test_BUGWARRIORRC_empty(self):
         """
@@ -106,7 +120,7 @@ class TestGetConfigPath(LoadTest):
         """
         os.environ['BUGWARRIORRC'] = ''
         rc = self.create('.config/bugwarrior/bugwarriorrc')
-        self.assertEqual(load.get_config_path(), rc)
+        assert load.get_config_path() == rc
 
 
 class TestBugwarriorConfigParser:
@@ -149,7 +163,7 @@ class TestParseFile(LoadTest):
                 foo = "bar"
             """))
 
-        with self.assertRaises(tomllib.TOMLDecodeError):
+        with pytest.raises(tomllib.TOMLDecodeError):
             load.parse_file(config_path)
 
     def test_ini(self):
@@ -161,7 +175,7 @@ class TestParseFile(LoadTest):
             """))
         config = load.parse_file(config_path)
 
-        self.assertEqual(config, {'general': {'foo': 'bar'}})
+        assert config == {'general': {'foo': 'bar'}}
 
     def test_ini_invalid(self):
         config_path = self.create('.bugwarriorrc')
@@ -171,7 +185,7 @@ class TestParseFile(LoadTest):
                 foo = bar
             """))
 
-        with self.assertRaises(configparser.MissingSectionHeaderError):
+        with pytest.raises(configparser.MissingSectionHeaderError):
             load.parse_file(config_path)
 
     def test_ini_options_renamed(self):
@@ -191,11 +205,11 @@ class TestParseFile(LoadTest):
             """))
         config = load.parse_file(config_path)
 
-        self.assertIn('optionname', config['baz'])
-        self.assertNotIn('prefix.optionname', config['baz'])
+        assert 'optionname' in config['baz']
+        assert 'prefix.optionname' not in config['baz']
 
-        self.assertIn('log_level', config['general'])
-        self.assertNotIn('log.level', config['general'])
+        assert 'log_level' in config['general']
+        assert 'log.level' not in config['general']
 
     def test_ini_missing_prefix(self):
         config_path = self.create('.bugwarriorrc')
@@ -208,7 +222,7 @@ class TestParseFile(LoadTest):
                 optionname
             """))
 
-        with self.assertRaises(SystemExit):
+        with pytest.raises(SystemExit):
             load.parse_file(config_path)
 
     def test_ini_wrong_prefix(self):
@@ -222,5 +236,5 @@ class TestParseFile(LoadTest):
                 wrong.optionname
             """))
 
-        with self.assertRaises(SystemExit):
+        with pytest.raises(SystemExit):
             load.parse_file(config_path)
