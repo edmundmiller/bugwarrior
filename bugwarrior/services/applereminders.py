@@ -356,6 +356,7 @@ class AppleRemindersClient(Client):
 class AppleRemindersIssue(Issue):
     TITLE = "applereminderstitle"
     NOTES = "applereminderssubnotes"
+    ID = "appleremindersid"
     DUE_DATE = "appleremindersduedate"
     COMPLETION_DATE = "applereminderscompletiondate"
     CREATION_DATE = "applereminderscreationdate"
@@ -363,11 +364,12 @@ class AppleRemindersIssue(Issue):
     LIST = "applereminderslist"
     URL = "appleremindersurl"
     FLAGGED = "appleremindersflagged"
-    UNIQUE_KEY = ("appleremindersid",)
+    UNIQUE_KEY = (ID,)
 
     UDAS = {
         TITLE: {"type": "string", "label": "Apple Reminders Title"},
         NOTES: {"type": "string", "label": "Apple Reminders Notes"},
+        ID: {"type": "string", "label": "Apple Reminders ID"},
         DUE_DATE: {"type": "date", "label": "Apple Reminders Due Date"},
         COMPLETION_DATE: {"type": "date", "label": "Apple Reminders Completion Date"},
         CREATION_DATE: {"type": "date", "label": "Apple Reminders Creation Date"},
@@ -378,7 +380,6 @@ class AppleRemindersIssue(Issue):
         LIST: {"type": "string", "label": "Apple Reminders List"},
         URL: {"type": "string", "label": "Apple Reminders URL"},
         FLAGGED: {"type": "string", "label": "Apple Reminders Flagged"},
-        UNIQUE_KEY: {"type": "string", "label": "Apple Reminders ID"},
     }
 
     def _get_formatted_date(self, date_value):
@@ -413,7 +414,7 @@ class AppleRemindersIssue(Issue):
             "project": self.record["list_name"],
             "priority": self.get_priority(),
             "annotations": [],
-            self.UNIQUE_KEY: self.record["id"],
+            self.ID: self.record["id"],
             self.TITLE: self.record["title"],
             self.LIST: self.record["list_name"],
         }
