@@ -1,7 +1,7 @@
 import copy
 
-import taskw.task
 import pytest
+import taskw.task
 
 from bugwarrior import db
 
