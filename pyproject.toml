@@ -87,6 +87,7 @@ youtrack = "bugwarrior.services.youtrack:YoutrackService"
 gmail = "bugwarrior.services.gmail:GmailService"
 teamwork_projects = "bugwarrior.services.teamwork_projects:TeamworkService"
 pivotaltracker = "bugwarrior.services.pivotaltracker:PivotalTrackerService"
+linear = "bugwarrior.services.linear:LinearService"
 logseq = "bugwarrior.services.logseq:LogseqService"
 todoist = "bugwarrior.services.todoist:TodoistService"
 

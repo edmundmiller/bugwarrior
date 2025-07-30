@@ -25,6 +25,7 @@ It currently supports the following remote resources:
 - `Pagure <https://pagure.io/>`_
 - `Phabricator <http://phabricator.org/>`_
 - `Pivotal Tracker <https://www.pivotaltracker.com/>`_
+- `Linear <https://linear.app/>`_
 - `Redmine <https://www.redmine.org/>`_
 - `Taiga <https://taiga.io>`_
 - `Teamwork Projects <https://www.teamwork.com/>`_
