@@ -20,10 +20,10 @@ RESPONSE = json.loads(
                     "title": "DO STUFF",
                     "description": "Better get started",
                     "assignee": {
-                        "name": "djmitche@gmail.com"
+                        "email": "djmitche@gmail.com"
                     },
                     "creator": {
-                        "name": "djmitche@gmail.com"
+                        "email": "djmitche@gmail.com"
                     },
                     "createdAt": "2025-07-24T17:03:04.239Z",
                     "updatedAt": "2025-07-25T17:03:04.239Z",
@@ -45,7 +45,7 @@ RESPONSE = json.loads(
                     "title": "Interface Bugwarrior to Linear",
                     "description": "Make a PR",
                     "assignee": {
-                        "name": "djmitche@gmail.com"
+                        "email": "djmitche@gmail.com"
                     },
                     "creator": null,
                     "completedAt": null,
