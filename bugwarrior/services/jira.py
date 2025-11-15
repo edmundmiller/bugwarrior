@@ -364,6 +364,7 @@ class JiraIssue(Issue):
 
 
 class JiraService(Service):
+    API_VERSION = 1.0
     ISSUE_CLASS = JiraIssue
     CONFIG_SCHEMA = JiraConfig
 

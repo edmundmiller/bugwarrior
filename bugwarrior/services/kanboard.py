@@ -113,6 +113,7 @@ class KanboardIssue(Issue):
 
 
 class KanboardService(Service):
+    API_VERSION = 1.0
     ISSUE_CLASS = KanboardIssue
     CONFIG_SCHEMA = KanboardConfig
 
