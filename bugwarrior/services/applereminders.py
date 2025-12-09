@@ -819,6 +819,7 @@ class AppleRemindersIssue(Issue):
 
 
 class AppleRemindersService(Service):
+    API_VERSION = 1.0
     ISSUE_CLASS = AppleRemindersIssue
     CONFIG_SCHEMA = AppleRemindersConfig
 
