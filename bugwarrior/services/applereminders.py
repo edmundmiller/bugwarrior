@@ -815,7 +815,7 @@ class AppleRemindersIssue(Issue):
             return self.config.default_priority
 
     def get_default_description(self):
-        return self.build_default_description(title=self.record["title"])
+        return self.build_default_description(title=self.record["title"], cls="task")
 
 
 class AppleRemindersService(Service):
