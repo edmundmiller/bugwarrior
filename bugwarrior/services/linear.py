@@ -205,7 +205,7 @@ class LinearService(Service, Client):
 
         if "errors" in res:
             messages = [
-                error.get("message", "Unknown error") for error in res['errors']
+                error.get("message", "Unknown error") for error in res["errors"]
             ]
             raise ValueError(messages.join("; "))
 
