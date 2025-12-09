@@ -16,14 +16,14 @@ SERVICE_FINISHED_ERROR = 1
 
 def get_service(service_name: str):
     try:
-        (service,) = entry_points(group='bugwarrior.service', name=service_name)
+        (service,) = entry_points(group="bugwarrior.service", name=service_name)
     except ValueError as e:
         if service_name in [
-            'activecollab',
-            'activecollab2',
-            'megaplan',
-            'teamlab',
-            'versionone',
+            "activecollab",
+            "activecollab2",
+            "megaplan",
+            "teamlab",
+            "versionone",
         ]:
             log.warning(f"The {service_name} service has been removed.")
         raise ValueError(
@@ -51,7 +51,7 @@ def _aggregate_issues(conf, main_section, target, queue):
         log.critical(f"Worker for [{target}] exited: {e}")
         queue.put((SERVICE_FINISHED_ERROR, target))
     except BaseException as e:
-        if hasattr(e, 'request') and e.request:
+        if hasattr(e, "request") and e.request:
             # Exceptions raised by requests library have the HTTP request
             # object stored as attribute. The request can have hooks attached
             # to it, and we need to remove them, as there can be unpickleable
@@ -99,7 +99,7 @@ def aggregate_issues(conf, main_section, debug):
         issue = queue.get(True)
         try:
             record = TaskConstructor(issue).get_taskwarrior_record()
-            record['target'] = issue.config.target
+            record["target"] = issue.config.target
             yield record
         except AttributeError:
             if isinstance(issue, tuple):
@@ -107,7 +107,7 @@ def aggregate_issues(conf, main_section, debug):
                 completion_type, target = issue
                 if completion_type == SERVICE_FINISHED_ERROR:
                     log.error(f"Aborted [{target}] due to critical error.")
-                    yield ('SERVICE FAILED', target)
+                    yield ("SERVICE FAILED", target)
                 continue
             raise
 
@@ -130,21 +130,21 @@ class TaskConstructor:
         return added_tags
 
     def get_taskwarrior_record(self, refined=True) -> dict:
-        if not getattr(self, '_taskwarrior_record', None):
+        if not getattr(self, "_taskwarrior_record", None):
             self._taskwarrior_record = self.issue.to_taskwarrior()
         record = copy.deepcopy(self._taskwarrior_record)
         if refined:
             record = self.refine_record(record)
-        if 'tags' not in record:
-            record['tags'] = []
+        if "tags" not in record:
+            record["tags"] = []
         if refined:
-            record['tags'].extend(self.get_added_tags())
+            record["tags"].extend(self.get_added_tags())
         return record
 
     def get_template_context(self):
         context = self.get_taskwarrior_record(refined=False).copy()
         context.update(self.issue.extra)
-        context.update({'description': self.issue.get_default_description()})
+        context.update({"description": self.issue.get_default_description()})
         return context
 
     def refine_record(self, record):
@@ -152,6 +152,11 @@ class TaskConstructor:
             if field in self.issue.config.templates:
                 template = Template(self.issue.config.templates[field])
                 record[field] = template.render(self.get_template_context())
-            elif field == 'description':
-                record['description'] = self.issue.get_default_description()
+            elif field == "description":
+                record["description"] = self.issue.get_default_description()
+        # Also apply UDA templates (fields not in Task.FIELDS)
+        for field, template_str in self.issue.config.templates.items():
+            if field not in Task.FIELDS:
+                template = Template(template_str)
+                record[field] = template.render(self.get_template_context())
         return record
