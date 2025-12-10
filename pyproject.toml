@@ -31,7 +31,7 @@ dependencies = [
   "pytz",
   "requests",
   "responses>=0.25.7",
-  "taskw>=0.8",
+  "taskw-ng>=0.2.0",
   # Needed for backwards compatibility with python<=3.10.
   "tomli",
   # Provides distutils compatibility shim for Python 3.12+ (taskw uses distutils.version)

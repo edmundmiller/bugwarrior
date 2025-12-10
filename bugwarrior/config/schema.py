@@ -7,7 +7,7 @@ import typing
 
 import pydantic.v1
 import pydantic.v1.error_wrappers
-import taskw
+import taskw_ng
 
 from bugwarrior.collect import get_service
 
@@ -328,7 +328,7 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
 
 # Dynamically add template fields to model.
 # Include standard taskwarrior fields plus common UDAs
-_TEMPLATE_FIELDS = set(taskw.task.Task.FIELDS.keys()) | {"workspace"}
+_TEMPLATE_FIELDS = set(taskw_ng.task.Task.FIELDS.keys()) | {"workspace"}
 
 _ServiceConfig = pydantic.v1.create_model(
     "_ServiceConfig",

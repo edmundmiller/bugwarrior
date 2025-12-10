@@ -132,7 +132,7 @@ When implementing a new service:
 
 ### Key Dependencies
 
-- `taskw`: Taskwarrior Python library
+- `taskw-ng`: Taskwarrior Python library (maintained fork of taskw)
 - `pydantic`: Configuration validation
 - `click`: CLI framework
 - `dogpile.cache`: Caching for API calls
