@@ -34,6 +34,8 @@ dependencies = [
   "taskw>=0.8",
   # Needed for backwards compatibility with python<=3.10.
   "tomli",
+  # Provides distutils compatibility shim for Python 3.12+ (taskw uses distutils.version)
+  "setuptools",
 ]
 
 [project.optional-dependencies]
