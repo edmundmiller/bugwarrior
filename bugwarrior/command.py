@@ -1,12 +1,13 @@
-import functools
 import getpass
 import logging
 import os
 import sys
+from typing import Optional
 
-import click
+import typer
 from lockfile import LockTimeout
 from lockfile.pidlockfile import PIDLockFile
+from typing_extensions import Annotated
 
 from bugwarrior.collect import aggregate_issues, get_service
 from bugwarrior.config import get_config_path, get_keyring, load_config
@@ -14,15 +15,27 @@ from bugwarrior.db import get_defined_udas_as_strings, synchronize
 
 log = logging.getLogger(__name__)
 
-
 # We overwrite 'list' further down.
 lst = list
 
+# Main CLI app
+app = typer.Typer(
+    help="Sync issues from forges to taskwarrior.",
+    no_args_is_help=True,
+)
 
-def _get_section_name(flavor):
+# Vault subcommand group
+vault_app = typer.Typer(
+    help="Password/keyring management for bugwarrior.",
+    no_args_is_help=True,
+)
+app.add_typer(vault_app, name="vault")
+
+
+def _get_section_name(flavor: Optional[str]) -> str:
     if flavor:
-        return 'flavor.' + flavor
-    return 'general'
+        return "flavor." + flavor
+    return "general"
 
 
 def _try_load_config(main_section, interactive=False, quiet=False):
@@ -42,81 +55,55 @@ def _try_load_config(main_section, interactive=False, quiet=False):
         sys.exit(1)
 
 
-def _legacy_cli_deprecation_warning(subcommand_callback):
-    @functools.wraps(subcommand_callback)
-    @click.pass_context
-    def wrapped_subcommand_callback(ctx, *args, **kwargs):
-        if ctx.find_root().command_path != 'bugwarrior':
-            old_command = ctx.command_path
-            new_command = ctx.command_path.replace('-', ' ')
-            log.warning(
-                f'Deprecation Warning: `{old_command}` is deprecated and will '
-                'be removed in a future version of bugwarrior. Please use '
-                f'`{new_command}` instead.'
-            )
-        return ctx.invoke(subcommand_callback, *args, **kwargs)
+@app.command()
+def pull(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Don't modify taskwarrior.")
+    ] = False,
+    flavor: Annotated[Optional[str], typer.Option(help="The flavor to use.")] = None,
+    interactive: Annotated[
+        bool, typer.Option(help="Prompt for missing credentials.")
+    ] = False,
+    debug: Annotated[
+        bool, typer.Option(help="Disable multiprocessing (for debugging with pdb).")
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("-q", "--quiet", help="Suppress output except warnings/errors."),
+    ] = False,
+    verbose: Annotated[
+        bool, typer.Option("-v", "--verbose", help="Show per-task details.")
+    ] = False,
+):
+    """Pull down tasks from forges and add them to your taskwarrior tasks."""
+    main_section = _get_section_name(flavor)
+    config = _try_load_config(main_section, interactive, quiet)
 
-    return wrapped_subcommand_callback
-
-
-class AliasedCli(click.Group):
-    """
-    Integrates subcommands into a top-level bugwarrior command.
-
-    By implementing this as an alias, we can maintain backwards compatibility
-    with the old cli api.
-    """
-
-    def list_commands(self, ctx):
-        return ctx.command.commands.keys()
-
-    def get_command(self, ctx, name):
-        return ctx.command.commands[name]
-
-
-@click.command(cls=AliasedCli)
-@click.version_option()
-def cli():
-    pass
-
-
-@cli.command()
-@click.option('--dry-run', is_flag=True)
-@click.option('--flavor', default=None, help='The flavor to use')
-@click.option('--interactive', is_flag=True)
-@click.option(
-    '--debug', is_flag=True, help='Do not use multiprocessing (which breaks pdb).'
-)
-@click.option('--quiet', is_flag=True, help='Set logging level to WARNING.')
-@_legacy_cli_deprecation_warning
-def pull(dry_run, flavor, interactive, debug, quiet):
-    """Pull down tasks from forges and add them to your taskwarrior tasks.
-
-    Relies on configuration file.
-    """
-
+    lockfile_path = os.path.join(config[main_section].data.path, "bugwarrior.lockfile")
     try:
-        main_section = _get_section_name(flavor)
-        config = _try_load_config(main_section, interactive, quiet)
-
-        lockfile_path = os.path.join(
-            config[main_section].data.path, 'bugwarrior.lockfile'
-        )
         lockfile = PIDLockFile(lockfile_path)
         lockfile.acquire(timeout=10)
         try:
-            # Get all the issues.  This can take a while.
-            issue_generator = aggregate_issues(config, main_section, debug)
+            # Get all the issues. This can take a while.
+            issue_generator = aggregate_issues(
+                config, main_section, debug, quiet=quiet, verbose=verbose
+            )
 
             # Stuff them in the taskwarrior db as necessary
-            synchronize(issue_generator, config, main_section, dry_run)
+            synchronize(
+                issue_generator,
+                config,
+                main_section,
+                dry_run,
+                verbose=verbose or dry_run,
+            )
         finally:
             lockfile.release()
     except LockTimeout:
         log.critical(
-            'Your taskrc repository is currently locked. '
-            'Remove the file at %s if you are sure no other '
-            'bugwarrior processes are currently running.' % (lockfile_path)
+            "Your taskrc repository is currently locked. "
+            "Remove the file at %s if you are sure no other "
+            "bugwarrior processes are currently running." % (lockfile_path)
         )
         sys.exit(1)
     except RuntimeError as e:
@@ -124,116 +111,142 @@ def pull(dry_run, flavor, interactive, debug, quiet):
         sys.exit(1)
 
 
-@cli.group()
-@_legacy_cli_deprecation_warning
-def vault():
-    """Password/keyring management for bugwarrior.
-
-    If you use the keyring password oracle in your bugwarrior config, this tool
-    can be used to manage your keyring. This feature requires the optional
-    keyring library. (pip install "bugwarrior[keyring]")
-    """
-    pass
-
-
-def targets():
-    config = _try_load_config('general')
-    for target in config['general'].targets:
+def _get_keyring_targets():
+    """Get targets that use keyring for passwords."""
+    config = _try_load_config("general")
+    for target in config["general"].targets:
         service_class = get_service(config[target].service)
         for value in [v for v in dict(config[target]).values() if isinstance(v, str)]:
-            if '@oracle:use_keyring' in value:
+            if "@oracle:use_keyring" in value:
                 yield service_class.get_keyring_service(config[target])
 
 
-@vault.command()
-def list():
-    pws = lst(targets())
+@vault_app.command("list")
+def vault_list():
+    """List configured keyring targets."""
+    pws = lst(_get_keyring_targets())
     print("%i @oracle:use_keyring passwords in bugwarriorrc" % len(pws))
     for section in pws:
         print("-", section)
 
 
-@vault.command()
-@click.argument('target')
-@click.argument('username')
-def clear(target, username):
-    target_list = lst(targets())
+@vault_app.command("clear")
+def vault_clear(
+    target: Annotated[str, typer.Argument(help="The target service name.")],
+    username: Annotated[str, typer.Argument(help="The username.")],
+):
+    """Clear a password from the keyring."""
+    target_list = lst(_get_keyring_targets())
     if target not in target_list:
-        raise ValueError("%s must be one of %r" % (target, target_list))
+        raise typer.BadParameter(f"{target} must be one of {target_list!r}")
 
     keyring = get_keyring()
     if keyring.get_password(target, username):
         keyring.delete_password(target, username)
-        print("Password cleared for %s, %s" % (target, username))
+        print(f"Password cleared for {target}, {username}")
     else:
-        print("No password found for %s, %s" % (target, username))
+        print(f"No password found for {target}, {username}")
 
 
-@vault.command()
-@click.argument('target')
-@click.argument('username')
-def set(target, username):
-    target_list = lst(targets())
+@vault_app.command("set")
+def vault_set(
+    target: Annotated[str, typer.Argument(help="The target service name.")],
+    username: Annotated[str, typer.Argument(help="The username.")],
+):
+    """Set a password in the keyring."""
+    target_list = lst(_get_keyring_targets())
     if target not in target_list:
         log.warning(
             "You must configure the password to '@oracle:use_keyring' "
             "prior to setting the value."
         )
-        raise ValueError("%s must be one of %r" % (target, target_list))
+        raise typer.BadParameter(f"{target} must be one of {target_list!r}")
 
     keyring = get_keyring()
     keyring.set_password(target, username, getpass.getpass())
-    print("Password set for %s, %s" % (target, username))
+    print(f"Password set for {target}, {username}")
 
 
-@cli.command()
-@click.option('--flavor', default=None, help='The flavor to use')
-@_legacy_cli_deprecation_warning
-def uda(flavor):
-    """
-    List bugwarrior-managed uda's.
+@app.command()
+def uda(
+    flavor: Annotated[Optional[str], typer.Option(help="The flavor to use.")] = None,
+):
+    """List bugwarrior-managed UDAs.
 
-    Most services define a set of UDAs in which bugwarrior store extra information
-    about the incoming ticket.  Usually, this includes things like the title
-    of the ticket and its URL, but some services provide an extensive amount of
-    metadata.  See each service's documentation for more information.
+    Most services define a set of UDAs in which bugwarrior stores extra
+    information about the incoming ticket. Usually, this includes things
+    like the title of the ticket and its URL, but some services provide
+    an extensive amount of metadata.
 
-    For using this data in reports, it is recommended that you add these UDA
-    definitions to your ``taskrc`` file. You can add the output of this command
-    verbatim to your ``taskrc`` file if you would like Taskwarrior to know the
-    human-readable name and data type for the defined UDAs.
-
-    .. note::
-
-       Not adding those lines to your ``taskrc`` file will have no negative
-       effects aside from Taskwarrior not knowing the human-readable name for the
-       field, but depending on what version of Taskwarrior you are using, it
-       may prevent you from changing the values of those fields or using them
-       in filter expressions.
+    For using this data in reports, it is recommended that you add these
+    UDA definitions to your taskrc file.
     """
     main_section = _get_section_name(flavor)
     conf = _try_load_config(main_section)
     print("# Bugwarrior UDAs")
-    for uda in get_defined_udas_as_strings(conf, main_section):
-        print(uda)
+    for uda_line in get_defined_udas_as_strings(conf, main_section):
+        print(uda_line)
     print("# END Bugwarrior UDAs")
 
 
-@cli.command()
-@click.argument(
-    'rcfile', required=False, default=get_config_path(), type=click.Path(exists=True)
-)
-def ini2toml(rcfile):
+@app.command()
+def ini2toml(
+    rcfile: Annotated[
+        Optional[str], typer.Argument(help="Path to bugwarriorrc file to convert.")
+    ] = None,
+):
     """Convert ini bugwarriorrc to toml and print result to stdout."""
+    if rcfile is None:
+        rcfile = get_config_path()
+
+    if not os.path.exists(rcfile):
+        raise typer.BadParameter(f"File not found: {rcfile}")
+
     try:
         from ini2toml.api import Translator
     except ImportError:
         raise SystemExit(
-            'Install extra dependencies to use this command:\n'
-            '    pip install bugwarrior[ini2toml]'
+            "Install extra dependencies to use this command:\n"
+            "    pip install bugwarrior[ini2toml]"
         )
-    if os.path.splitext(rcfile)[-1] == '.toml':
-        raise SystemExit(f'{rcfile} is already toml!')
-    with open(rcfile, 'r') as f:
+    if os.path.splitext(rcfile)[-1] == ".toml":
+        raise SystemExit(f"{rcfile} is already toml!")
+    with open(rcfile, "r") as f:
         bugwarriorrc = f.read()
-    print(Translator().translate(bugwarriorrc, 'bugwarriorrc'))
+    print(Translator().translate(bugwarriorrc, "bugwarriorrc"))
+
+
+# For backward compatibility with legacy entry points (bugwarrior-pull, etc.)
+# These are referenced in pyproject.toml [project.scripts]
+# We need to expose these as module-level callables.
+
+
+def _legacy_pull():
+    """Legacy entry point for bugwarrior-pull."""
+    import sys
+
+    # Insert 'pull' as the command if not already specified
+    if len(sys.argv) == 1 or sys.argv[1].startswith("-"):
+        sys.argv.insert(1, "pull")
+    app()
+
+
+def _legacy_vault():
+    """Legacy entry point for bugwarrior-vault."""
+    vault_app()
+
+
+def _legacy_uda():
+    """Legacy entry point for bugwarrior-uda."""
+    import sys
+
+    # Insert 'uda' as the command if not already specified
+    if len(sys.argv) == 1 or sys.argv[1].startswith("-"):
+        sys.argv.insert(1, "uda")
+    app()
+
+
+# Create the main CLI function
+def cli():
+    """Main entry point."""
+    app()

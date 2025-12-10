@@ -19,7 +19,6 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "click",
   "dogpile.cache>=0.5.3",
   "importlib-metadata>=4.13.0",
   "jinja2>=2.7.2",
@@ -34,6 +33,8 @@ dependencies = [
   "taskw-ng>=0.2.0",
   # Needed for backwards compatibility with python<=3.10.
   "tomli",
+  # CLI framework (includes rich for progress indicators)
+  "typer[all]>=0.9.0",
   # Provides distutils compatibility shim for Python 3.12+ (taskw uses distutils.version)
   "setuptools",
 ]

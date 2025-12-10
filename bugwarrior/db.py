@@ -240,7 +240,16 @@ def run_hooks(pre_import):
             raise RuntimeError(msg)
 
 
-def synchronize(issue_generator, conf, main_section, dry_run=False):
+def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=False):
+    """Synchronize issues from services to taskwarrior.
+
+    Args:
+        issue_generator: Generator yielding issues from services.
+        conf: Configuration dict.
+        main_section: Name of the main config section.
+        dry_run: If True, don't actually modify taskwarrior.
+        verbose: If True, log per-task details at INFO level.
+    """
     main_config = conf[main_section]
 
     targets = main_config.targets.copy()
@@ -349,10 +358,13 @@ def synchronize(issue_generator, conf, main_section, dry_run=False):
                 issue_updates["existing"].append(task)
 
     notreally = " (not really)" if dry_run else ""
+    # Use INFO for per-task details if verbose, otherwise DEBUG
+    task_log = log.info if verbose else log.debug
+
     # Add new issues
     log.info("Adding %i tasks", len(issue_updates["new"]))
     for issue in issue_updates["new"]:
-        log.info("Adding task %s%s", issue["description"], notreally)
+        task_log("Adding task %s%s", issue["description"], notreally)
 
         if dry_run:
             continue
@@ -376,7 +388,7 @@ def synchronize(issue_generator, conf, main_section, dry_run=False):
                 for field, ch in issue.get_changes(keep=True).items()
             ]
         )
-        log.info(
+        task_log(
             "Updating task %s, %s; %s%s",
             str(issue["uuid"]),
             issue["description"],
@@ -401,7 +413,7 @@ def synchronize(issue_generator, conf, main_section, dry_run=False):
     log.info("Closing %i tasks", len(issue_updates["closed"]))
     for issue in issue_updates["closed"]:
         _, task_info = tw.get_task(uuid=issue)
-        log.info(
+        task_log(
             "Completing task %s %s%s",
             issue,
             task_info.get("description", ""),

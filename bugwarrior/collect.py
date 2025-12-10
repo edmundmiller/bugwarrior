@@ -5,6 +5,7 @@ import time
 
 from importlib_metadata import entry_points
 from jinja2 import Template
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from taskw_ng.task import Task
 
 log = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def _aggregate_issues(conf, main_section, target, queue):
             issue_count += 1
     except SystemExit as e:
         log.critical(f"Worker for [{target}] exited: {e}")
-        queue.put((SERVICE_FINISHED_ERROR, target))
+        queue.put((SERVICE_FINISHED_ERROR, target, 0))
     except BaseException as e:
         if hasattr(e, "request") and e.request:
             # Exceptions raised by requests library have the HTTP request
@@ -58,60 +59,94 @@ def _aggregate_issues(conf, main_section, target, queue):
             # methods. There is no one left to call these hooks anyway.
             e.request.hooks = {}
         log.exception(f"Worker for [{target}] failed: {e}")
-        queue.put((SERVICE_FINISHED_ERROR, target))
+        queue.put((SERVICE_FINISHED_ERROR, target, 0))
     else:
         log.debug(f"Worker for [{target}] finished ok.")
-        queue.put((SERVICE_FINISHED_OK, target))
+        queue.put((SERVICE_FINISHED_OK, target, issue_count))
     finally:
         duration = time.time() - start
-        log.info(f"Done with [{target}] in {duration}.")
+        log.debug(f"Done with [{target}] in {duration:.1f}s.")
 
 
-def aggregate_issues(conf, main_section, debug):
+def aggregate_issues(conf, main_section, debug, quiet=False, verbose=False):
     """Return all issues from every target."""
-    log.info("Starting to aggregate remote issues.")
+    log.debug("Starting to aggregate remote issues.")
 
     # Create and call service objects for every target in the config
     targets = conf[main_section].targets
 
     queue = multiprocessing.Queue()
 
-    log.info("Spawning %i workers." % len(targets))
+    log.debug("Spawning %i workers." % len(targets))
 
-    if debug:
+    # Set up progress display (unless quiet mode)
+    use_progress = not quiet
+    progress_ctx = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=not verbose,
+        disable=not use_progress,
+    )
+
+    with progress_ctx as progress:
+        # Create a progress task for each target
+        progress_tasks = {}
         for target in targets:
-            _aggregate_issues(conf, main_section, target, queue)
-    else:
-        for target in targets:
-            proc = multiprocessing.Process(
-                target=_aggregate_issues, args=(conf, main_section, target, queue)
+            progress_tasks[target] = progress.add_task(
+                f"[cyan]{target}[/cyan]", total=1
             )
-            proc.start()
 
-            # Sleep for 1 second here to try and avoid a race condition where
-            # all N workers start up and ask the gpg-agent process for
-            # information at the same time.  This causes gpg-agent to fumble
-            # and tell some of our workers some incomplete things.
-            time.sleep(1)
+        if debug:
+            for target in targets:
+                _aggregate_issues(conf, main_section, target, queue)
+        else:
+            for target in targets:
+                proc = multiprocessing.Process(
+                    target=_aggregate_issues, args=(conf, main_section, target, queue)
+                )
+                proc.start()
 
-    currently_running = len(targets)
-    while currently_running > 0:
-        issue = queue.get(True)
-        try:
-            record = TaskConstructor(issue).get_taskwarrior_record()
-            record["target"] = issue.config.target
-            yield record
-        except AttributeError:
-            if isinstance(issue, tuple):
-                currently_running -= 1
-                completion_type, target = issue
-                if completion_type == SERVICE_FINISHED_ERROR:
-                    log.error(f"Aborted [{target}] due to critical error.")
-                    yield ("SERVICE FAILED", target)
-                continue
-            raise
+                # Sleep for 1 second here to try and avoid a race condition where
+                # all N workers start up and ask the gpg-agent process for
+                # information at the same time.  This causes gpg-agent to fumble
+                # and tell some of our workers some incomplete things.
+                time.sleep(1)
 
-    log.info("Done aggregating remote issues.")
+        currently_running = len(targets)
+        issue_counts = {target: 0 for target in targets}
+
+        while currently_running > 0:
+            issue = queue.get(True)
+            try:
+                record = TaskConstructor(issue).get_taskwarrior_record()
+                record["target"] = issue.config.target
+                # Track issue count per target
+                target = record["target"]
+                issue_counts[target] = issue_counts.get(target, 0) + 1
+                yield record
+            except AttributeError:
+                if isinstance(issue, tuple):
+                    currently_running -= 1
+                    completion_type, target, count = issue
+                    if completion_type == SERVICE_FINISHED_ERROR:
+                        log.error(f"Aborted [{target}] due to critical error.")
+                        progress.update(
+                            progress_tasks[target],
+                            description=f"[red]✗ {target}[/red]",
+                            completed=1,
+                        )
+                        yield ("SERVICE FAILED", target)
+                    else:
+                        final_count = issue_counts.get(target, count)
+                        progress.update(
+                            progress_tasks[target],
+                            description=f"[green]✓ {target}[/green] ({final_count} issues)",
+                            completed=1,
+                        )
+                    continue
+                raise
+
+    log.debug("Done aggregating remote issues.")
 
 
 class TaskConstructor:
