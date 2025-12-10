@@ -1,14 +1,17 @@
 [project]
 name = "bugwarrior"
 version = "2.0.0-alpha"
-description = "a command line utility for updating your local taskwarrior database from your forge issue trackers"
+description = "Sync github, bitbucket, and trac issues with taskwarrior"
 readme = "bugwarrior/README.rst"
 # Needed for pydantic>1.8.
 requires-python = ">=3.9,<4"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE.txt"]
-keywords=["task", "taskwarrior", "todo", "github"]
-classifiers=[
+keywords = ["task", "taskwarrior", "todo", "github"]
+authors = [
+  { name = "Ralph Bean", email = "ralph.bean@gmail.com" }
+]
+classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
@@ -61,6 +64,7 @@ trac = ["offtrac"]
 all = ["bugwarrior[applereminders,bts,bugzilla,gmail,ini2toml,jira,kanboard,keyring,phabricator,test,trac]"]
 
 [project.urls]
+homepage = "https://github.com/ralphbean/bugwarrior"
 documentation = "https://bugwarrior.readthedocs.io/en/stable/"
 repository = "https://github.com/GothenburgBitFactory/bugwarrior"
 
@@ -77,6 +81,7 @@ deck = "bugwarrior.services.deck:NextcloudDeckService"
 gitbug = "bugwarrior.services.gitbug:GitBugService"
 github = "bugwarrior.services.github:GithubService"
 gitlab = "bugwarrior.services.gitlab:GitlabService"
+linear = "bugwarrior.services.linear:LinearService"
 bitbucket = "bugwarrior.services.bitbucket:BitbucketService"
 trac = "bugwarrior.services.trac:TracService"
 bts = "bugwarrior.services.bts:BTSService"
@@ -100,7 +105,10 @@ todoist = "bugwarrior.services.todoist:TodoistService"
 bugwarrior = "bugwarrior.config.ini2toml_plugin:activate"
 
 [tool.setuptools]
-packages = ["bugwarrior"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+exclude = ["ez_setup", "examples", "tests", "tests.*"]
 
 [tool.uv.sources]
 apple-reminders = { git = "https://github.com/luizribeiro/apple-reminders.git" }
