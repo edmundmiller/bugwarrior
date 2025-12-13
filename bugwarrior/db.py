@@ -273,7 +273,13 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
         config_filename=main_config.taskrc, config_overrides=uda_list, marshal=True
     )
 
-    issue_updates = {"new": [], "existing": [], "changed": [], "closed": []}
+    issue_updates = {
+        "new": [],
+        "existing": [],
+        "changed": [],
+        "closed": [],
+        "diverged": [],
+    }
 
     issue_map = {}  # unique identifier -> issue
     for issue in issue_generator:
@@ -325,9 +331,18 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
             _, task = tw.get_task(uuid=existing_taskwarrior_uuid)
 
             if task["status"] == "completed":
-                # Reopen task
-                task["status"] = "pending"
-                task["end"] = None
+                # Task is completed locally but issue is still open upstream
+                # Don't reopen it - track as diverged and warn the user
+                issue_updates["diverged"].append(
+                    {
+                        "uuid": existing_taskwarrior_uuid,
+                        "task": task,
+                        "issue": issue,
+                        "service": service_config.service,
+                    }
+                )
+                # Skip further processing of this task - leave it completed
+                continue
 
             # Drop static fields from the upstream issue.  We don't want to
             # overwrite local changes to fields we declare static.
@@ -429,6 +444,63 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
             tw.task_done(uuid=issue)
         except TaskwarriorError as e:
             log.exception("Unable to close task: %s" % e.stderr)
+
+    # Warn about diverged tasks (completed locally but still open upstream)
+    if issue_updates["diverged"]:
+        log.warning("")
+        log.warning("=" * 80)
+        log.warning(
+            "⚠️  WARNING: The following tasks are completed locally but still open upstream:"
+        )
+        log.warning("")
+
+        # Group diverged tasks by service for cleaner output
+        by_service = {}
+        for diverged in issue_updates["diverged"]:
+            service = diverged["service"]
+            if service not in by_service:
+                by_service[service] = []
+            by_service[service].append(diverged)
+
+        for service, diverged_tasks in by_service.items():
+            log.warning(f"{service.upper()}:")
+            for diverged in diverged_tasks:
+                task = diverged["task"]
+                issue = diverged["issue"]
+                description = task.get("description", "Unknown")
+
+                # Try to extract URL from task - services store URLs in UDAs
+                # e.g., githuburl, jiraurl, appleremindersurl, etc.
+                url = (
+                    task.get(f"{service}url")
+                    or task.get("url")
+                    or issue.get(f"{service}url")
+                    or issue.get("url")
+                )
+
+                # Try to get issue identifier for display
+                issue_id = ""
+                if service == "github" and "githubnumber" in task:
+                    issue_id = f" (#{task['githubnumber']})"
+                elif service == "jira" and "jiraid" in task:
+                    issue_id = f" ({task['jiraid']})"
+                elif service == "gitlab" and "gitlabnumber" in task:
+                    issue_id = f" (#{task['gitlabnumber']})"
+                elif service == "linear" and "linearid" in task:
+                    issue_id = f" ({task['linearid']})"
+
+                log.warning(f'  • "{description}"{issue_id}')
+                if url:
+                    log.warning(f"    👉 {url}")
+                else:
+                    log.warning(f"    👉 Close this issue in {service}")
+                log.warning("")
+
+        log.warning(
+            "⚠️  Please close these issues upstream. This warning will repeat until you do."
+        )
+        log.warning("=" * 80)
+        log.warning("")
 
     # Send notifications
     if notify:

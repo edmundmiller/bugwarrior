@@ -198,32 +198,47 @@ class TestSynchronize(ConfigTest):
             },
         )
 
-        # TEST REOPENED ISSUE
-        db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
+        # TEST DIVERGED ISSUE (completed locally but still open upstream)
+        # The new behavior: task stays completed, warning is shown
+        with self.assertLogs("bugwarrior.db", level="WARNING") as cm:
+            db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
+            # Verify warning was logged
+            self.assertTrue(
+                any(
+                    "completed locally but still open upstream" in msg
+                    for msg in cm.output
+                )
+            )
 
         tasks = tw.load_tasks()
+        # Task should remain completed (not reopened)
+        self.assertEqual(len(tasks["completed"]), 1)
+        self.assertEqual(len(tasks["pending"]), 0)
+
+        # Verify it's the same task that was completed earlier
         self.assertEqual(
-            completed_tasks["completed"][0]["uuid"], tasks["pending"][0]["uuid"]
+            completed_tasks["completed"][0]["uuid"], tasks["completed"][0]["uuid"]
         )
 
         tasks = remove_non_deterministic_keys(tasks)
+        del tasks["completed"][0]["end"]
         self.assertEqual(
             tasks,
             {
-                "completed": [],
-                "pending": [
+                "completed": [
                     {
                         "priority": "M",
                         "project": "sample_project",
-                        "status": "pending",
+                        "status": "completed",
                         "description": "Yada yada yada.",
                         "githuburl": "https://example.com",
                         "githubtype": "issue",
-                        "id": 1,
+                        "id": 0,
                         "tags": ["bar", "foo"],
                         "urgency": 5.8,
                     }
                 ],
+                "pending": [],
             },
         )
 
