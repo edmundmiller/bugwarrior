@@ -18,15 +18,24 @@ Bugwarrior is a command-line utility that synchronizes issues from various issue
 # Install with all dependencies
 uv sync --all-extras
 
-# Install with specific service dependencies
-uv sync --extra jira --extra github --extra gitlab
+# Install with services that need extra dependencies (e.g., jira)
+uv sync --extra jira
 
 # Install test dependencies only
 uv sync --extra test
 
-# Install locally as a tool
-uv tool install -e .
+# Install locally as a tool (with extras for services you use)
+uv tool install -e ".[jira]"
 ```
+
+**Note:** Most services (github, gitlab, linear, etc.) only require `requests` which is a core dependency. Only some services need extras:
+- `jira` - Jira integration
+- `bugzilla` - Bugzilla integration  
+- `gmail` - Gmail integration
+- `phabricator` - Phabricator integration
+- `bts` - Debian BTS integration
+- `kanboard` - Kanboard integration
+- `trac` - Trac integration
 
 **Alternative (pip):**
 
@@ -35,7 +44,7 @@ uv tool install -e .
 pip install -e .[all]
 
 # Install with specific service dependencies
-pip install -e .[jira,github,gitlab]
+pip install -e .[jira]
 ```
 
 ### Testing
@@ -134,7 +143,8 @@ When implementing a new service:
 
 - `taskw-ng`: Taskwarrior Python library (maintained fork of taskw)
 - `pydantic`: Configuration validation
-- `click`: CLI framework
+- `typer`: CLI framework (with rich for progress indicators)
 - `dogpile.cache`: Caching for API calls
+- `requests`: HTTP client (used by most services directly)
 - `ruff`: Linting and formatting
-- Service-specific: `PyGithub`, `python-gitlab`, `jira`, etc.
+- Service-specific: `jira`, `python-bugzilla`, etc.
