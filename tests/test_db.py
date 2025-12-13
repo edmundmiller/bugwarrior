@@ -89,6 +89,7 @@ class TestSynchronize(ConfigTest):
                 "targets": ["my_service"],
                 "taskrc": self.taskrc,
                 "static_fields": ["project", "priority"],
+                "reopen_completed_tasks": False,
             },
             "my_service": {
                 "service": "github",
@@ -241,6 +242,77 @@ class TestSynchronize(ConfigTest):
                 "pending": [],
             },
         )
+
+    def test_synchronize_reopen_default(self):
+        """Test that completed tasks are reopened when reopen_completed_tasks=True (default)."""
+
+        def remove_non_deterministic_keys(tasks):
+            for status in ["pending", "completed"]:
+                for task in tasks[status]:
+                    del task["modified"]
+                    del task["entry"]
+                    del task["uuid"]
+                    task["tags"] = sorted(task["tags"])
+            return tasks
+
+        self.config = {
+            "general": {
+                "targets": ["my_service"],
+                "taskrc": self.taskrc,
+                "static_fields": ["project", "priority"],
+                "reopen_completed_tasks": True,  # Explicit default
+            },
+            "my_service": {
+                "service": "github",
+                "login": "ralphbean",
+                "username": "ralphbean",
+                "token": "abc123",
+            },
+        }
+        bwconfig = self.validate()
+
+        tw = taskw_ng.TaskWarrior(self.taskrc)
+
+        issue = {
+            "description": "Test issue",
+            "project": "sample_project",
+            "githubtype": "issue",
+            "githuburl": "https://example.com",
+            "priority": "M",
+            "tags": ["test"],
+            "target": "my_service",
+        }
+
+        # Create issue
+        db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
+
+        # Close it
+        db.synchronize(iter(()), bwconfig, "general")
+
+        completed_tasks = tw.load_tasks()
+        self.assertEqual(len(completed_tasks["completed"]), 1)
+        self.assertEqual(len(completed_tasks["pending"]), 0)
+
+        # Try to sync again with issue still open upstream
+        # Task should be REOPENED (default behavior)
+        db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
+
+        tasks = tw.load_tasks()
+        self.assertEqual(len(tasks["completed"]), 0, "Task should be reopened")
+        self.assertEqual(len(tasks["pending"]), 1, "Task should be in pending")
+
+        # Verify it's the same task (same UUID) that was reopened
+        self.assertEqual(
+            completed_tasks["completed"][0]["uuid"], tasks["pending"][0]["uuid"]
+        )
+
+        # Verify task is in pending state
+        tasks = remove_non_deterministic_keys(tasks)
+        # Note: urgency can vary slightly based on task history
+        self.assertEqual(len(tasks["pending"]), 1)
+        self.assertEqual(tasks["pending"][0]["status"], "pending")
+        self.assertEqual(tasks["pending"][0]["description"], "Test issue")
+        self.assertEqual(len(tasks["completed"]), 0)
 
 
 class TestUDAs(ConfigTest):

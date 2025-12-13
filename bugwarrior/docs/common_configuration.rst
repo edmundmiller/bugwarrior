@@ -80,10 +80,61 @@ Optional options and their defaults include:
     # Use for values that you want to tune manually.
     static_fields = priority
 
+    # If false, bugwarrior won't reopen tasks you've marked as completed when the
+    # upstream issue is still open. Instead, it will warn you about the divergence.
+    # This helps prevent losing track of tasks you've intentionally closed locally.
+    reopen_completed_tasks = True
+
 In addition to the ``[general]`` section, sections may be named
 ``[flavor.myflavor]`` and may be selected using the ``--flavor`` option to
 ``bugwarrior pull``. This section will then be used rather than the
 ``[general]`` section.
+
+
+Task Completion and Divergence Handling
+----------------------------------------
+
+Bugwarrior synchronizes issues from upstream services to Taskwarrior, but what
+happens when you mark a task as completed locally while the issue is still open
+upstream?
+
+By default (``reopen_completed_tasks = True``), Bugwarrior will **reopen** the
+task on the next sync. This ensures your local task list stays in sync with
+upstream, but it means you can't mark an issue as "done" locally until it's
+actually closed upstream.
+
+If you set ``reopen_completed_tasks = False``, Bugwarrior will:
+
+* **Keep your task completed** locally
+* **Log a warning** showing which tasks are completed locally but still open upstream
+* **Continue warning** on each sync until you close the issue upstream
+
+This is useful if you:
+
+* Want to mark tasks as "done" in your local workflow before closing them upstream
+* Need a reminder that you still need to close the issue on GitHub/Jira/etc.
+* Don't want your completed tasks to be automatically reopened
+
+**Example warning output:**
+
+.. code-block:: text
+
+    ⚠️  WARNING: The following tasks are completed locally but still open upstream:
+    
+    GITHUB:
+      • "Fix bug in parser" (#123)
+        👉 https://github.com/user/repo/issues/123
+    
+    JIRA:
+      • "Update documentation" (PROJ-456)
+        👉 https://jira.example.com/browse/PROJ-456
+    
+    ⚠️  Please close these issues upstream. This warning will repeat until you do.
+
+.. note::
+    Bugwarrior does not currently support writing changes back to upstream
+    services (two-way sync). You must manually close issues in the upstream
+    service.
 
 
 .. _common_configuration_options:

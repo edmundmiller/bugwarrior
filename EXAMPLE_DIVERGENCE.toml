@@ -1,0 +1,28 @@
+# Example configuration demonstrating the reopen_completed_tasks feature
+#
+# This example shows how to configure bugwarrior to prevent automatic
+# reopening of tasks you've marked as completed locally.
+
+[general]
+targets = ["my_github", "my_reminders"]
+
+# Prevent bugwarrior from reopening tasks you've marked as completed
+# When false, bugwarrior will warn you about diverged tasks instead
+reopen_completed_tasks = false
+
+# Optional: Get notifications about diverged tasks
+[notifications]
+notifications = true
+backend = "applescript"  # or "gobject" on Linux
+
+[my_github]
+service = "github"
+login = "your_username"
+token = "@oracle:use_keyring"
+username = "your_username"
+
+[my_reminders]
+service = "applereminders"
+lists = ["Work", "Personal"]
+# Include completed reminders to avoid divergence warnings
+include_completed = false

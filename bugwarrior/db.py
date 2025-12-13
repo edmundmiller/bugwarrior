@@ -332,17 +332,35 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
 
             if task["status"] == "completed":
                 # Task is completed locally but issue is still open upstream
-                # Don't reopen it - track as diverged and warn the user
-                issue_updates["diverged"].append(
-                    {
-                        "uuid": existing_taskwarrior_uuid,
-                        "task": task,
-                        "issue": issue,
-                        "service": service_config.service,
-                    }
-                )
-                # Skip further processing of this task - leave it completed
-                continue
+                if main_config.reopen_completed_tasks:
+                    # Reopen the task (original behavior)
+                    log.info(
+                        "Reopening completed task %s for issue %s",
+                        existing_taskwarrior_uuid,
+                        issue.get("description", ""),
+                    )
+                    task["status"] = "pending"
+                    task["end"] = None
+                else:
+                    # Don't reopen it - track as diverged and warn the user
+                    log.warning(
+                        "Task %s is completed locally but issue '%s' is still open in %s. "
+                        "Not reopening due to reopen_completed_tasks=false. "
+                        "Consider closing the issue upstream.",
+                        existing_taskwarrior_uuid,
+                        issue.get("description", ""),
+                        service_config.service,
+                    )
+                    issue_updates["diverged"].append(
+                        {
+                            "uuid": existing_taskwarrior_uuid,
+                            "task": task,
+                            "issue": issue,
+                            "service": service_config.service,
+                        }
+                    )
+                    # Skip further processing of this task - leave it completed
+                    continue
 
             # Drop static fields from the upstream issue.  We don't want to
             # overwrite local changes to fields we declare static.
@@ -510,15 +528,15 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
             + len(issue_updates["closed"])
         )
         if not conf["notifications"].only_on_new_tasks or updates > 0:
+            description = "New: %d, Changed: %d, Completed: %d" % (
+                len(issue_updates["new"]),
+                len(issue_updates["changed"]),
+                len(issue_updates["closed"]),
+            )
+            if issue_updates["diverged"]:
+                description += ", Diverged: %d" % len(issue_updates["diverged"])
             send_notification(
-                dict(
-                    description="New: %d, Changed: %d, Completed: %d"
-                    % (
-                        len(issue_updates["new"]),
-                        len(issue_updates["changed"]),
-                        len(issue_updates["closed"]),
-                    )
-                ),
+                dict(description=description),
                 "bw_finished",
                 conf["notifications"],
             )

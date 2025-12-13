@@ -174,6 +174,7 @@ class MainSectionConfig(pydantic.v1.BaseModel):
     replace_tags: bool = False
     static_tags: ConfigList = ConfigList([])
     static_fields: ConfigList = ConfigList(["priority"])
+    reopen_completed_tasks: bool = True
 
     log_level: typing.Literal[
         ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "DISABLED")
