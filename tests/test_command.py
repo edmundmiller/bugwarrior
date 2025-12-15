@@ -72,14 +72,12 @@ class TestPull(ConfigTest):
         """
         A normal `bugwarrior pull` invocation.
         """
-        with self.caplog.at_level(logging.INFO):
-            self.runner.invoke(command.app, args=["pull", "--debug"])
+        result = self.runner.invoke(command.app, args=["pull", "--debug"])
 
-        logs = [rec.message for rec in self.caplog.records]
-
-        self.assertIn("Adding 1 tasks", logs)
-        self.assertIn("Updating 0 tasks", logs)
-        self.assertIn("Closing 0 tasks", logs)
+        # Console output goes to stderr, which CliRunner captures in output
+        output = result.output
+        self.assertIn("Adding 1 tasks", output)
+        self.assertIn("Sync complete:", output)
 
     @mock.patch(
         "bugwarrior.services.github.GithubService.issues",
@@ -89,15 +87,10 @@ class TestPull(ConfigTest):
         """
         A broken `bugwarrior pull` invocation.
         """
-        with self.caplog.at_level(logging.ERROR):
-            self.runner.invoke(command.app, args=["pull"])
+        result = self.runner.invoke(command.app, args=["pull"])
 
-        self.assertNotEqual(self.caplog.records, [])
-        self.assertEqual(len(self.caplog.records), 1)
-        self.assertEqual(
-            self.caplog.records[0].message,
-            "Aborted [my_service] due to critical error.",
-        )
+        # Error messages go to console (stderr captured in output)
+        self.assertIn("Aborted [my_service] due to critical error", result.output)
 
     @mock.patch("bugwarrior.services.github.GithubService.issues", lambda self: [])
     @mock.patch(
@@ -120,13 +113,13 @@ class TestPull(ConfigTest):
 
         self.write_rc(self.config)
 
-        with self.caplog.at_level(logging.INFO):
-            # Use --debug to disable multiprocessing so mocks work
-            self.runner.invoke(command.app, args=["pull", "--debug"])
+        # Use --debug to disable multiprocessing so mocks work
+        result = self.runner.invoke(command.app, args=["pull", "--debug"])
 
-        logs = [rec.message for rec in self.caplog.records]
-        self.assertIn("Aborted [my_broken_service] due to critical error.", logs)
-        self.assertIn("Adding 0 tasks", logs)
+        self.assertIn(
+            "Aborted [my_broken_service] due to critical error", result.output
+        )
+        self.assertIn("Sync complete:", result.output)
 
     @mock.patch("bugwarrior.services.github.GithubService.issues", fake_github_issues)
     @mock.patch("bugzilla.Bugzilla")
@@ -147,44 +140,38 @@ class TestPull(ConfigTest):
 
         # Add a task to each service.
         # Use --debug to disable multiprocessing so mocks work
-        with self.caplog.at_level(logging.DEBUG):
-            with mock.patch(
-                "bugwarrior.services.bz.BugzillaService.issues", fake_bz_issues
-            ):
-                self.runner.invoke(command.app, args=["pull", "--debug"])
-        logs = [rec.message for rec in self.caplog.records]
-        self.assertIn("Adding 2 tasks", logs)
+        with mock.patch(
+            "bugwarrior.services.bz.BugzillaService.issues", fake_bz_issues
+        ):
+            result = self.runner.invoke(command.app, args=["pull", "--debug"])
+        self.assertIn("Adding 2 tasks", result.output)
 
         # Break the service and run pull again.
-        with self.caplog.at_level(logging.INFO):
-            with mock.patch(
-                "bugwarrior.services.bz.BugzillaService.issues",
-                lambda self: (_ for _ in ()).throw(Exception("message")),
-            ):
-                self.runner.invoke(command.app, args=["pull", "--debug"])
-        logs = [rec.message for rec in self.caplog.records]
+        with mock.patch(
+            "bugwarrior.services.bz.BugzillaService.issues",
+            lambda self: (_ for _ in ()).throw(Exception("message")),
+        ):
+            result = self.runner.invoke(command.app, args=["pull", "--debug"])
 
         # Make sure my_broken_service failed while my_service succeeded.
-        self.assertIn("Aborted [my_broken_service] due to critical error.", logs)
-        self.assertNotIn("Aborted my_service due to critical error.", logs)
+        self.assertIn(
+            "Aborted [my_broken_service] due to critical error", result.output
+        )
+        self.assertNotIn("Aborted my_service due to critical error", result.output)
 
-        # Assert that issues weren't closed or marked complete.
-        self.assertNotIn("Closing 1 tasks", logs)
-        self.assertNotIn("Completing task", logs)
+        # Assert that issues weren't closed (Closing X tasks not shown)
+        self.assertNotIn("Closing", result.output)
 
     @mock.patch("bugwarrior.services.github.GithubService.issues", fake_github_issues)
     def test_legacy_cli(self):
         """
         Test that invoking the app directly with 'pull' command works.
         """
-        with self.caplog.at_level(logging.INFO):
-            self.runner.invoke(command.app, args=["pull", "--debug"])
+        result = self.runner.invoke(command.app, args=["pull", "--debug"])
 
-        logs = [rec.message for rec in self.caplog.records]
-
-        self.assertIn("Adding 1 tasks", logs)
-        self.assertIn("Updating 0 tasks", logs)
-        self.assertIn("Closing 0 tasks", logs)
+        output = result.output
+        self.assertIn("Adding 1 tasks", output)
+        self.assertIn("Sync complete:", output)
 
 
 class TestIni2Toml(TestCase):

@@ -11,6 +11,7 @@ from typing_extensions import Annotated
 
 from bugwarrior.collect import aggregate_issues, get_service
 from bugwarrior.config import get_config_path, get_keyring, load_config
+from bugwarrior.console import console, error, set_verbosity, warn
 from bugwarrior.db import get_defined_udas_as_strings, synchronize
 
 log = logging.getLogger(__name__)
@@ -41,17 +42,9 @@ def _get_section_name(flavor: Optional[str]) -> str:
 def _try_load_config(main_section, interactive=False, quiet=False):
     try:
         return load_config(main_section, interactive, quiet)
-    except OSError:
-        # Our standard logging configuration depends on the bugwarrior
-        # configuration file which just failed to load.
-        logging.basicConfig()
-
-        exc_info = sys.exc_info()
-        log.critical(
-            "Could not load configuration. "
-            "Maybe you have not created a configuration file.",
-            exc_info=(exc_info[0], exc_info[1], None),
-        )
+    except OSError as e:
+        error(f"Could not load configuration: {e}")
+        console.print("[dim]Maybe you have not created a configuration file.[/dim]")
         sys.exit(1)
 
 
@@ -76,6 +69,9 @@ def pull(
     ] = False,
 ):
     """Pull down tasks from forges and add them to your taskwarrior tasks."""
+    # Set console verbosity before any output
+    set_verbosity(quiet=quiet, verbose=verbose)
+
     main_section = _get_section_name(flavor)
     config = _try_load_config(main_section, interactive, quiet)
 
@@ -100,14 +96,14 @@ def pull(
         finally:
             lockfile.release()
     except LockTimeout:
-        log.critical(
-            "Your taskrc repository is currently locked. "
-            "Remove the file at %s if you are sure no other "
-            "bugwarrior processes are currently running." % (lockfile_path)
+        error(
+            f"Your taskrc repository is currently locked. "
+            f"Remove the file at {lockfile_path} if you are sure no other "
+            f"bugwarrior processes are currently running."
         )
         sys.exit(1)
     except RuntimeError as e:
-        log.exception("Aborted (%s)" % e)
+        error(f"Aborted: {e}")
         sys.exit(1)
 
 
@@ -156,7 +152,7 @@ def vault_set(
     """Set a password in the keyring."""
     target_list = lst(_get_keyring_targets())
     if target not in target_list:
-        log.warning(
+        warn(
             "You must configure the password to '@oracle:use_keyring' "
             "prior to setting the value."
         )

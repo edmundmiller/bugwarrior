@@ -8,6 +8,8 @@ from jinja2 import Template
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from taskw_ng.task import Task
 
+from bugwarrior.console import error as console_error
+
 log = logging.getLogger(__name__)
 
 # Sentinels for process completion status
@@ -129,7 +131,7 @@ def aggregate_issues(conf, main_section, debug, quiet=False, verbose=False):
                     currently_running -= 1
                     completion_type, target, count = issue
                     if completion_type == SERVICE_FINISHED_ERROR:
-                        log.error(f"Aborted [{target}] due to critical error.")
+                        console_error(f"Aborted \\[{target}] due to critical error.")
                         progress.update(
                             progress_tasks[target],
                             description=f"[red]✗ {target}[/red]",

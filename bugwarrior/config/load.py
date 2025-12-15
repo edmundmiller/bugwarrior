@@ -16,15 +16,33 @@ BUGWARRIORRC = "BUGWARRIORRC"
 
 
 def configure_logging(logfile, loglevel):
-    logging.basicConfig(filename=logfile, level=loglevel)
+    """Configure file-based logging for bugwarrior.
+
+    Console output is handled separately by bugwarrior.console module.
+    This function only sets up file logging for debug/audit purposes.
+    """
+    # Only configure file logging if a logfile is specified
+    if logfile:
+        logging.basicConfig(
+            filename=logfile,
+            level=loglevel,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    else:
+        # No file logging, but still configure the root logger
+        # to prevent "No handlers" warnings, using NullHandler
+        logging.basicConfig(
+            level=loglevel,
+            handlers=[logging.NullHandler()],
+        )
 
     # In general, its nice to log "everything", but some of the loggers from
     # our dependencies are very very spammy.  Here, we silence most of their
     # noise:
     spammers = [
-        'bugzilla.base',
-        'bugzilla.bug',
-        'requests.packages.urllib3.connectionpool',
+        "bugzilla.base",
+        "bugzilla.bug",
+        "requests.packages.urllib3.connectionpool",
     ]
     for spammer in spammers:
         logging.getLogger(spammer).setLevel(logging.WARN)
@@ -34,18 +52,18 @@ def get_config_path():
     """Determine path to config file. See docs/manpage.rst for precedence."""
     if os.environ.get(BUGWARRIORRC):
         return os.environ[BUGWARRIORRC]
-    xdg_config_home = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser(
-        '~/.config'
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser(
+        "~/.config"
     )
-    xdg_config_dirs = (os.environ.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':')
+    xdg_config_dirs = (os.environ.get("XDG_CONFIG_DIRS") or "/etc/xdg").split(":")
     paths = [
-        os.path.join(xdg_config_home, 'bugwarrior', 'bugwarriorrc'),
-        os.path.join(xdg_config_home, 'bugwarrior', 'bugwarrior.toml'),
+        os.path.join(xdg_config_home, "bugwarrior", "bugwarriorrc"),
+        os.path.join(xdg_config_home, "bugwarrior", "bugwarrior.toml"),
         os.path.expanduser("~/.bugwarriorrc"),
         os.path.expanduser("~/.bugwarrior.toml"),
     ]
-    paths += [os.path.join(d, 'bugwarrior', 'bugwarriorrc') for d in xdg_config_dirs]
-    paths += [os.path.join(d, 'bugwarrior', 'bugwarrior.toml') for d in xdg_config_dirs]
+    paths += [os.path.join(d, "bugwarrior", "bugwarriorrc") for d in xdg_config_dirs]
+    paths += [os.path.join(d, "bugwarrior", "bugwarrior.toml") for d in xdg_config_dirs]
     for path in paths:
         if os.path.exists(path):
             return path
@@ -53,8 +71,8 @@ def get_config_path():
 
 
 def parse_file(configpath: str) -> dict:
-    if os.path.splitext(configpath)[-1] == '.toml':
-        with open(configpath, 'rb') as f:
+    if os.path.splitext(configpath)[-1] == ".toml":
+        with open(configpath, "rb") as f:
             config = tomllib.load(f)
     else:
         rawconfig = BugwarriorConfigParser()
@@ -62,23 +80,23 @@ def parse_file(configpath: str) -> dict:
             rawconfig.read_file(buff)
         config = {}
         for section in rawconfig.sections():
-            if section in ['hooks', 'notifications']:
+            if section in ["hooks", "notifications"]:
                 config[section] = rawconfig[section].items()
-            elif section == 'general':
+            elif section == "general":
                 config[section] = {
-                    k.replace('log.', 'log_'): v for k, v in rawconfig[section].items()
+                    k.replace("log.", "log_"): v for k, v in rawconfig[section].items()
                 }
-            elif section.startswith('flavor.'):
-                config['flavor'][section.split('.')[-1]] = {
-                    k.replace('.', '_'): v for k, v in rawconfig[section].items()
+            elif section.startswith("flavor."):
+                config["flavor"][section.split(".")[-1]] = {
+                    k.replace(".", "_"): v for k, v in rawconfig[section].items()
                 }
             else:
-                service = rawconfig[section].pop('service')
-                service_prefix = 'ado' if service == 'azuredevops' else service
-                config[section] = {'service': service}
+                service = rawconfig[section].pop("service")
+                service_prefix = "ado" if service == "azuredevops" else service
+                config[section] = {"service": service}
                 for k, v in rawconfig[section].items():
                     try:
-                        prefix, key = k.split('.')
+                        prefix, key = k.split(".")
                     except ValueError:  # missing prefix
                         prefix = None
                         key = k
@@ -95,11 +113,11 @@ def parse_file(configpath: str) -> dict:
 def load_config(main_section, interactive, quiet) -> dict:
     configpath = get_config_path()
     rawconfig = parse_file(configpath)
-    rawconfig[main_section]['interactive'] = interactive
+    rawconfig[main_section]["interactive"] = interactive
     config = schema.validate_config(rawconfig, main_section, configpath)
     configure_logging(
         config[main_section].log_file,
-        'WARNING' if quiet else config[main_section].log_level,
+        "WARNING" if quiet else config[main_section].log_level,
     )
     return config
 
@@ -116,7 +134,7 @@ class BugwarriorConfigParser(configparser.ConfigParser):
         try:
             return super().getint(section, option)
         except ValueError:
-            if self.get(section, option) == '':
+            if self.get(section, option) == "":
                 return None
             else:
                 raise ValueError(

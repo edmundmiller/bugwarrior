@@ -4,17 +4,16 @@ import logging
 import re
 import subprocess
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from taskw_ng import TaskWarrior
 from taskw_ng.exceptions import TaskwarriorError
 
 from bugwarrior.collect import get_service
+from bugwarrior.console import console, hint, warn, detail
 from bugwarrior.notifications import send_notification
 
 log = logging.getLogger(__name__)
-console = Console(stderr=True)
 
 
 class NotFound(Exception):
@@ -262,10 +261,9 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
     uda_list = build_uda_config_overrides(services)
 
     if uda_list:
-        log.info(
-            "Service-defined UDAs exist: you can optionally use the "
-            "`bugwarrior-uda` command to export a list of UDAs you can "
-            "add to your taskrc file."
+        hint(
+            "Service-defined UDAs exist: run 'bugwarrior uda' "
+            "to export UDA definitions for your taskrc."
         )
 
     # Before running CRUD operations, call the pre_import hook(s).
@@ -338,23 +336,15 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
                 # Task is completed locally but issue is still open upstream
                 if main_config.reopen_completed_tasks:
                     # Reopen the task (original behavior)
-                    log.info(
-                        "Reopening completed task %s for issue %s",
-                        existing_taskwarrior_uuid,
-                        issue.get("description", ""),
+                    detail(
+                        f"Reopening completed task {existing_taskwarrior_uuid} "
+                        f"for issue {issue.get('description', '')}"
                     )
                     task["status"] = "pending"
                     task["end"] = None
                 else:
-                    # Don't reopen it - track as diverged and warn the user
-                    log.warning(
-                        "Task %s is completed locally but issue '%s' is still open in %s. "
-                        "Not reopening due to reopen_completed_tasks=false. "
-                        "Consider closing the issue upstream.",
-                        existing_taskwarrior_uuid,
-                        issue.get("description", ""),
-                        service_config.service,
-                    )
+                    # Don't reopen it - track as diverged
+                    # (warning displayed later in summary)
                     issue_updates["diverged"].append(
                         {
                             "uuid": existing_taskwarrior_uuid,
@@ -394,14 +384,15 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
             else:
                 issue_updates["existing"].append(task)
 
-    notreally = " (not really)" if dry_run else ""
-    # Use INFO for per-task details if verbose, otherwise DEBUG
-    task_log = log.info if verbose else log.debug
+    notreally = " [dim](dry run)[/dim]" if dry_run else ""
 
     # Add new issues
-    log.info("Adding %i tasks", len(issue_updates["new"]))
+    if issue_updates["new"]:
+        console.print(
+            f"Adding [green]{len(issue_updates['new'])}[/green] tasks{notreally}"
+        )
     for issue in issue_updates["new"]:
-        task_log("Adding task %s%s", issue["description"], notreally)
+        detail(f"+ {issue['description']}")
 
         if dry_run:
             continue
@@ -417,7 +408,10 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
         else:
             seen_uuids.add(new_task["uuid"])
 
-    log.info("Updating %i tasks", len(issue_updates["changed"]))
+    if issue_updates["changed"]:
+        console.print(
+            f"Updating [blue]{len(issue_updates['changed'])}[/blue] tasks{notreally}"
+        )
     for issue in issue_updates["changed"]:
         changes = "; ".join(
             [
@@ -425,13 +419,7 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
                 for field, ch in issue.get_changes(keep=True).items()
             ]
         )
-        task_log(
-            "Updating task %s, %s; %s%s",
-            str(issue["uuid"]),
-            issue["description"],
-            changes,
-            notreally,
-        )
+        detail(f"~ {issue['description']}: {changes}")
         if dry_run:
             continue
 
@@ -447,15 +435,13 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
         tw, build_key_list(set([conf[target].service for target in targets]))
     )
     issue_updates["closed"] = succeeded_service_task_uuids - seen_uuids
-    log.info("Closing %i tasks", len(issue_updates["closed"]))
+    if issue_updates["closed"]:
+        console.print(
+            f"Closing [red]{len(issue_updates['closed'])}[/red] tasks{notreally}"
+        )
     for issue in issue_updates["closed"]:
         _, task_info = tw.get_task(uuid=issue)
-        task_log(
-            "Completing task %s %s%s",
-            issue,
-            task_info.get("description", ""),
-            notreally,
-        )
+        detail(f"- {task_info.get('description', '')}")
         if dry_run:
             continue
 
