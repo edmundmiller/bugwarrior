@@ -200,16 +200,9 @@ class TestSynchronize(ConfigTest):
         )
 
         # TEST DIVERGED ISSUE (completed locally but still open upstream)
-        # The new behavior: task stays completed, warning is shown
-        with self.assertLogs("bugwarrior.db", level="WARNING") as cm:
-            db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
-            # Verify warning was logged
-            self.assertTrue(
-                any(
-                    "completed locally but still open upstream" in msg
-                    for msg in cm.output
-                )
-            )
+        # The new behavior: task stays completed, Rich panel is shown
+        # (Rich output goes to stderr, not logging)
+        db.synchronize(iter((copy.deepcopy(issue),)), bwconfig, "general")
 
         tasks = tw.load_tasks()
         # Task should remain completed (not reopened)

@@ -4,6 +4,9 @@ import logging
 import re
 import subprocess
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 from taskw_ng import TaskWarrior
 from taskw_ng.exceptions import TaskwarriorError
 
@@ -11,6 +14,7 @@ from bugwarrior.collect import get_service
 from bugwarrior.notifications import send_notification
 
 log = logging.getLogger(__name__)
+console = Console(stderr=True)
 
 
 class NotFound(Exception):
@@ -465,13 +469,6 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
 
     # Warn about diverged tasks (completed locally but still open upstream)
     if issue_updates["diverged"]:
-        log.warning("")
-        log.warning("=" * 80)
-        log.warning(
-            "⚠️  WARNING: The following tasks are completed locally but still open upstream:"
-        )
-        log.warning("")
-
         # Group diverged tasks by service for cleaner output
         by_service = {}
         for diverged in issue_updates["diverged"]:
@@ -480,45 +477,72 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
                 by_service[service] = []
             by_service[service].append(diverged)
 
+        # Build Rich table for diverged tasks
+        table = Table(
+            title="Diverged Tasks",
+            title_style="bold yellow",
+            show_header=True,
+            header_style="bold",
+        )
+        table.add_column("Service", style="cyan")
+        table.add_column("Description", style="white")
+        table.add_column("ID", style="dim")
+        table.add_column("URL", style="blue")
+
         for service, diverged_tasks in by_service.items():
-            log.warning(f"{service.upper()}:")
             for diverged in diverged_tasks:
                 task = diverged["task"]
                 issue = diverged["issue"]
                 description = task.get("description", "Unknown")
 
                 # Try to extract URL from task - services store URLs in UDAs
-                # e.g., githuburl, jiraurl, appleremindersurl, etc.
                 url = (
                     task.get(f"{service}url")
                     or task.get("url")
                     or issue.get(f"{service}url")
                     or issue.get("url")
+                    or f"(close in {service})"
                 )
 
                 # Try to get issue identifier for display
                 issue_id = ""
                 if service == "github" and "githubnumber" in task:
-                    issue_id = f" (#{task['githubnumber']})"
+                    issue_id = f"#{task['githubnumber']}"
                 elif service == "jira" and "jiraid" in task:
-                    issue_id = f" ({task['jiraid']})"
+                    issue_id = task["jiraid"]
                 elif service == "gitlab" and "gitlabnumber" in task:
-                    issue_id = f" (#{task['gitlabnumber']})"
-                elif service == "linear" and "linearid" in task:
-                    issue_id = f" ({task['linearid']})"
+                    issue_id = f"#{task['gitlabnumber']}"
+                elif service == "linear" and "linearidentifier" in task:
+                    issue_id = task["linearidentifier"]
 
-                log.warning(f'  • "{description}"{issue_id}')
-                if url:
-                    log.warning(f"    👉 {url}")
-                else:
-                    log.warning(f"    👉 Close this issue in {service}")
-                log.warning("")
+                table.add_row(service.upper(), description, issue_id, url)
 
-        log.warning(
-            "⚠️  Please close these issues upstream. This warning will repeat until you do."
+        console.print()
+        console.print(
+            Panel(
+                table,
+                title="[bold yellow]⚠️  Completed Locally, Still Open Upstream[/]",
+                subtitle="[dim]Close these issues upstream to dismiss this warning[/]",
+                border_style="yellow",
+            )
         )
-        log.warning("=" * 80)
-        log.warning("")
+        console.print()
+
+    # Print final summary with Rich
+    summary_parts = []
+    if issue_updates["new"]:
+        summary_parts.append(f"[green]+{len(issue_updates['new'])} new[/]")
+    if issue_updates["changed"]:
+        summary_parts.append(f"[blue]~{len(issue_updates['changed'])} updated[/]")
+    if issue_updates["closed"]:
+        summary_parts.append(f"[red]-{len(issue_updates['closed'])} closed[/]")
+    if issue_updates["diverged"]:
+        summary_parts.append(f"[yellow]⚠ {len(issue_updates['diverged'])} diverged[/]")
+
+    if summary_parts:
+        console.print(f"[bold]Sync complete:[/] {', '.join(summary_parts)}")
+    else:
+        console.print("[dim]Sync complete: no changes[/]")
 
     # Send notifications
     if notify:
