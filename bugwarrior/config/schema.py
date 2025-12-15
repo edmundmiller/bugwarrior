@@ -329,7 +329,7 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
 
 # Dynamically add template fields to model.
 # Include standard taskwarrior fields plus common UDAs
-_TEMPLATE_FIELDS = set(taskw_ng.task.Task.FIELDS.keys()) | {"workspace"}
+_TEMPLATE_FIELDS = set(taskw_ng.task.Task.FIELDS.keys()) | {"area"}
 
 _ServiceConfig = pydantic.v1.create_model(
     "_ServiceConfig",
