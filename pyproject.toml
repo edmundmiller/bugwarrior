@@ -3,8 +3,8 @@ name = "bugwarrior"
 version = "2.0.0-alpha"
 description = "Sync github, bitbucket, and trac issues with taskwarrior"
 readme = "bugwarrior/README.rst"
-# Needed for pydantic>1.8.
-requires-python = ">=3.9,<4"
+# Python 3.14+ blocked by pydantic-core compatibility (PyO3 dependency)
+requires-python = ">=3.9,<3.14"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE.txt"]
 keywords = ["task", "taskwarrior", "todo", "github"]
