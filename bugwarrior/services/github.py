@@ -4,7 +4,8 @@ import sys
 import typing
 import urllib.parse
 
-import pydantic.v1
+import pydantic
+from pydantic import model_validator
 import requests
 
 from bugwarrior import config
@@ -35,38 +36,43 @@ class GithubConfig(config.ServiceConfig):
     exclude_pull_requests: bool = False
     include_user_issues: bool = True
     involved_issues: bool = False
-    host: config.NoSchemeUrl = config.NoSchemeUrl(
-        "github.com", scheme="https", host="github.com"
-    )
+    host: str = "github.com"
     body_length: int = sys.maxsize
     project_owner_prefix: bool = False
     issue_urls: config.ConfigList = config.ConfigList([])
     ignore_user_comments: config.ConfigList = config.ConfigList([])
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def deprecate_password(cls, values):
-        if values["password"] != "Deprecated":
+        password = values.get("password", "Deprecated")
+        if password != "Deprecated":
             log.warning(
                 "Basic auth is no longer supported. Please remove "
                 '"password" in favor of "token".'
             )
         return values
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def require_username_or_query(cls, values):
-        if not values["username"] and not values["query"]:
+        username = values.get("username", "")
+        query = values.get("query", "")
+        if not username and not query:
             raise ValueError("section requires one of:\n    username\n    query")
         return values
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def issue_urls_consistent_with_host(cls, values):
+        issue_urls = values.get("issue_urls", [])
+        host = values.get("host", "github.com")
+
         issue_url_paths = []
-        for url in values["issue_urls"]:
+        for url in issue_urls:
             parsed_url = urllib.parse.urlparse(url)
-            if parsed_url.netloc != values["host"]:
-                raise ValueError(
-                    f"issue_urls: {url} inconsistent with host {values['host']}"
-                )
+            if parsed_url.netloc != host:
+                raise ValueError(f"issue_urls: {url} inconsistent with host {host}")
             if not re.match(r"^/.*/.*/(issues|pull)/[0-9]*$", parsed_url.path):
                 raise ValueError(
                     f"issue_urls: {parsed_url.path} is not a valid issue path"
@@ -75,9 +81,12 @@ class GithubConfig(config.ServiceConfig):
         values["issue_urls"] = issue_url_paths
         return values
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def require_username_if_include_user_repos(cls, values):
-        if values["include_user_repos"] and not values["username"]:
+        include_user_repos = values.get("include_user_repos", True)  # default value
+        username = values.get("username", "")  # default value
+        if include_user_repos and not username:
             raise ValueError(
                 "username required when include_user_repos is True (default)"
             )

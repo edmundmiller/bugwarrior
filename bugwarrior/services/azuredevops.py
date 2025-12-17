@@ -6,6 +6,7 @@ import typing
 from urllib.parse import quote
 
 import requests
+from pydantic import Field
 
 from bugwarrior import config
 from bugwarrior.services import Client, Issue, Service
@@ -15,24 +16,27 @@ log = logging.getLogger(__name__)
 
 class EscapedStr(str):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.with_info_before_validator_function(
+            cls.validate,
+            core_schema.str_schema(),
+        )
 
     @classmethod
-    def validate(cls, value):
+    def validate(cls, value, info=None):
         return quote(value)
 
 
 class AzureDevopsConfig(config.ServiceConfig):
-    service: typing.Literal['azuredevops']
+    service: typing.Literal["azuredevops"]
     PAT: str
     project: EscapedStr
     organization: EscapedStr
 
-    host: config.NoSchemeUrl = config.NoSchemeUrl(
-        'dev.azure.com', scheme='https', host='azure.com'
-    )
-    wiql_filter: str = ''
+    host: config.NoSchemeUrl = "dev.azure.com"
+    wiql_filter: str = ""
 
 
 def striphtml(data):
@@ -84,7 +88,7 @@ class AzureDevopsClient(Client):
             sys.exit(1)
         if (
             resp.status_code == 400
-            and resp.json()['typeKey']
+            and resp.json()["typeKey"]
             == "WorkItemTrackingQueryResultSizeLimitExceededException"
         ):
             log.critical(
@@ -92,7 +96,7 @@ class AzureDevopsClient(Client):
                 "narrow the search by updating the ado.wiql_filter"
             )
             sys.exit(1)
-        return [workitem['id'] for workitem in resp.json()["workItems"]]
+        return [workitem["id"] for workitem in resp.json()["workItems"]]
 
     def get_workitem_comments(self, workitem):
         comment_link = workitem["_links"]["workItemComments"]["href"]
@@ -149,7 +153,7 @@ class AzureDevopsIssue(Issue):
 
     def to_taskwarrior(self):
         return {
-            "project": self.extra['project'],
+            "project": self.extra["project"],
             "priority": self.get_priority(),
             "annotations": self.extra.get("annotations", []),
             "entry": self.parse_date(
@@ -194,7 +198,7 @@ class AzureDevopsService(Service):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
         self.client = AzureDevopsClient(
-            pat=self.get_secret('PAT'),
+            pat=self.get_secret("PAT"),
             project=self.config.project,
             org=self.config.organization,
             host=self.config.host,
