@@ -24,6 +24,7 @@ dependencies = [
   "jinja2>=2.7.2",
   "lockfile>=0.9.1",
   "pydantic[email]>=2",
+  "pydantic-settings>=2.0.0",
   "pyobjc-framework-eventkit>=11.1",
   "pytest>=8.4.1",
   "python-dateutil",
@@ -54,6 +55,7 @@ test = [
    "flake8",
    "pytest",
    "pytest-subtests",
+   "pytest-xdist>=3.0.0",  # Parallel execution
    "responses",
    "sphinx>=1.0",
    "sphinx-click",
@@ -119,3 +121,42 @@ apple-reminders = { git = "https://github.com/luizribeiro/apple-reminders.git" }
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "bump-pydantic>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.4"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Agent-friendly output and parallel execution
+addopts = [
+    "-v",                    # Verbose output for agents
+    "--tb=short",           # Concise traceback format  
+    "--strict-markers",     # Strict marker validation
+    "--strict-config",      # Strict config validation
+    "-n", "auto",           # Parallel execution with auto CPU detection
+    "--dist=loadscope",     # Group by module/class for fixture efficiency
+    "--maxprocesses=8",     # Limit max workers for stability
+]
+
+# Define test categories for selective execution
+markers = [
+    "unit: unit tests (fast, no external dependencies)",
+    "integration: integration tests with external services", 
+    "service: specific service tests (github, linear, etc)",
+    "config: configuration validation tests",
+    "migration: pydantic migration validation tests",
+]
+
+# Filter warnings for cleaner agent output
+filterwarnings = [
+    "ignore::DeprecationWarning:pydantic.v1.*",
+    "ignore::DeprecationWarning:pydantic.deprecated.*",
+    "error::UserWarning",
+]
