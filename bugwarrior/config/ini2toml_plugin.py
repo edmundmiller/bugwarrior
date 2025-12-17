@@ -5,8 +5,8 @@ import re
 import typing
 
 from ini2toml.types import IntermediateRepr, Translator
-import pydantic.v1
-from pydantic.v1 import BaseModel
+import pydantic
+from pydantic import BaseModel, ValidationError
 
 from .schema import ConfigList, Hooks, MainSectionConfig, Notifications, ServiceConfig
 
@@ -42,46 +42,61 @@ def to_int(section: IntermediateRepr, key: str):
 
 
 def to_list(section: IntermediateRepr, key: str):
-    to_type(section, key, ConfigList.validate)
+    # For v2, use a lambda that calls the validator correctly
+    to_type(section, key, lambda val: ConfigList._validate(val, None))
 
 
-def convert_section(section: IntermediateRepr, schema: BaseModel):
-    for prop, attrs in schema.schema()['properties'].items():
+def convert_section(section: IntermediateRepr, schema_class: type[BaseModel]):
+    # For v2, use model_fields to introspect field types
+    for prop, field_info in schema_class.model_fields.items():
+        attrs = {"type": "string"}  # default fallback
+        # Try to determine type from annotation
+        if hasattr(field_info, "annotation"):
+            annotation = field_info.annotation
+            if annotation == bool:
+                attrs = {"type": "boolean"}
+            elif annotation == int:
+                attrs = {"type": "integer"}
+            elif (
+                hasattr(annotation, "__origin__")
+                and getattr(annotation, "__origin__", None) == list
+            ):
+                attrs = {"type": "array"}
         try:
-            t = attrs['type']
+            t = attrs["type"]
         except KeyError:
             pass  # optional
         else:
-            if t == 'boolean':
+            if t == "boolean":
                 to_bool(section, prop)
-            elif t == 'integer':
+            elif t == "integer":
                 to_int(section, prop)
-            elif t == 'array':
+            elif t == "array":
                 to_list(section, prop)
 
 
 def process_values(doc: IntermediateRepr) -> IntermediateRepr:
     for name, section in doc.items():
         if isinstance(name, str):
-            if name == 'general' or re.match(r'^flavor\.', name):
+            if name == "general" or re.match(r"^flavor\.", name):
                 convert_section(section, MainSectionConfig)
-                for k in ['log.level', 'log.file']:
+                for k in ["log.level", "log.file"]:
                     if k in section:
-                        section.rename(k, k.replace('.', '_'))
-            elif name == 'hooks':
+                        section.rename(k, k.replace(".", "_"))
+            elif name == "hooks":
                 convert_section(section, Hooks)
-            elif name == 'notifications':
+            elif name == "notifications":
                 convert_section(section, Notifications)
             else:  # services
-                service = section['service']
+                service = section["service"]
 
                 # Validate and strip prefixes.
                 for key in section.keys():
-                    if isinstance(key, str) and key != 'service':
-                        prefix = 'ado' if service == 'azuredevops' else service
-                        newkey, subs = re.subn(f'^{prefix}\\.', '', key)
+                    if isinstance(key, str) and key != "service":
+                        prefix = "ado" if service == "azuredevops" else service
+                        newkey, subs = re.subn(f"^{prefix}\\.", "", key)
                         if subs != 1:
-                            option = key.split('.').pop()
+                            option = key.split(".").pop()
                             log.warning(
                                 f"[{name}]\n{key} <-expected prefix "
                                 f"'{prefix}': did you mean "
@@ -90,11 +105,11 @@ def process_values(doc: IntermediateRepr) -> IntermediateRepr:
                         section.rename(key, newkey)
 
                 # Get Config
-                module_name = {'bugzilla': 'bz', 'phabricator': 'phab'}.get(
+                module_name = {"bugzilla": "bz", "phabricator": "phab"}.get(
                     service, service
                 )
                 service_module = importlib.import_module(
-                    f'bugwarrior.services.{module_name}'
+                    f"bugwarrior.services.{module_name}"
                 )
                 for name, obj in inspect.getmembers(
                     service_module, predicate=inspect.isclass
@@ -109,10 +124,10 @@ def process_values(doc: IntermediateRepr) -> IntermediateRepr:
 
                 # Convert Types
                 convert_section(section, schema)
-                if service == 'gitlab' and 'verify_ssl' in section.keys():
+                if service == "gitlab" and "verify_ssl" in section.keys():
                     try:
-                        to_bool(section, 'verify_ssl')
-                    except pydantic.v1.ValidationError:
+                        to_bool(section, "verify_ssl")
+                    except ValidationError:
                         # verify_ssl is allowed to be a path
                         pass
 

@@ -47,14 +47,14 @@ class StrippedTrailingSlashUrl(AnyUrl):
         return value
 
 
-class NoSchemeUrl(StrippedTrailingSlashUrl):
+class NoSchemeUrl(str):
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
         from pydantic_core import core_schema
 
         return core_schema.with_info_before_validator_function(
             cls._validate,
-            core_schema.url_schema(),
+            core_schema.str_schema(),
         )
 
     @classmethod
@@ -159,9 +159,15 @@ class UnsupportedOption(typing.Generic[T]):
     def __get_pydantic_core_schema__(cls, source_type, handler):
         from pydantic_core import core_schema
 
+        # Get the generic argument type
+        if hasattr(source_type, "__args__") and source_type.__args__:
+            inner_type = source_type.__args__[0]
+        else:
+            inner_type = typing.Any
+
         return core_schema.with_info_before_validator_function(
             cls._validate,
-            handler(source_type),
+            handler.generate_schema(inner_type),
         )
 
     @classmethod
@@ -195,7 +201,7 @@ class MainSectionConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def compute_data(cls, values):
-        if isinstance(values, dict):
+        if isinstance(values, dict) and "taskrc" in values:
             values["data"] = BugwarriorData(get_data_path(values["taskrc"]))
         return values
 
