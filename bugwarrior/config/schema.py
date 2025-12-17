@@ -5,8 +5,22 @@ import re
 import sys
 import typing
 
-import pydantic.v1
-import pydantic.v1.error_wrappers
+import pydantic
+from pydantic import (
+    AnyUrl,
+    field_validator,
+    model_validator,
+    Field,
+    BaseModel,
+    ValidationError,
+    create_model,
+    ConfigDict,
+)
+from pydantic_settings import BaseSettings
+from pydantic._internal._model_construction import complete_model_class
+from pydantic.functional_validators import BeforeValidator
+from pydantic_core import PydanticCustomError
+from typing_extensions import Annotated
 import taskw_ng
 
 from bugwarrior.collect import get_service
@@ -16,74 +30,94 @@ from .data import BugwarriorData, get_data_path
 log = logging.getLogger(__name__)
 
 
-class StrippedTrailingSlashUrl(pydantic.v1.AnyUrl):
+class StrippedTrailingSlashUrl(AnyUrl):
     @classmethod
-    def validate(cls, value, field, config):
-        return super().validate(value.rstrip("/"), field, config)
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
 
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            core_schema.url_schema(),
+        )
 
-class UrlSchemeError(pydantic.v1.UrlSchemeError):
-    msg_template = "URL should not include scheme ('{scheme}')"
+    @classmethod
+    def _validate(cls, value, info):
+        if isinstance(value, str):
+            value = value.rstrip("/")
+        return value
 
 
 class NoSchemeUrl(StrippedTrailingSlashUrl):
     @classmethod
-    def validate_parts(cls, parts: typing.Dict[str, str]) -> typing.Dict[str, str]:
-        scheme = parts["scheme"]
-        if scheme is not None:
-            raise UrlSchemeError(scheme=scheme)
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
 
-        port = parts["port"]
-        if port is not None and int(port) > 65_535:
-            raise pydantic.v1.errors.UrlPortError()
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            core_schema.url_schema(),
+        )
 
-        user = parts["user"]
-        if cls.user_required and user is None:
-            raise pydantic.v1.errors.UrlUserInfoError()
-
-        return parts
+    @classmethod
+    def _validate(cls, value, info):
+        if isinstance(value, str):
+            value = value.rstrip("/")
+            # Check for scheme
+            if "://" in value:
+                scheme = value.split("://", 1)[0]
+                raise ValueError(f"URL should not include scheme ('{scheme}')")
+        return value
 
 
 # Pydantic complicates the use of sets or lists as default values.
 class ConfigList(frozenset):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            core_schema.list_schema(core_schema.str_schema()),
+        )
 
     @classmethod
-    def validate(cls, value):
+    def _validate(cls, value, info):
         """Cast ini string to a list of strings"""
-        try:
+        if isinstance(value, str):
             return [
                 item.strip()
                 for item in re.split(",(?![^{]*})", value.strip())
                 if item != ""
             ]
-        except AttributeError:  # not a string, presumably an iterable
-            return value
+        return value
 
 
 # HACK https://stackoverflow.com/a/34116756
 class ExpandedPath(type(pathlib.Path())):  # type: ignore
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            core_schema.str_schema(),
+        )
 
     @classmethod
-    def validate(cls, path):
+    def _validate(cls, path, info):
         return os.path.expanduser(os.path.expandvars(path))
 
 
 class LoggingPath(ExpandedPath):
     @classmethod
-    def validate(cls, path):
-        return os.path.relpath(super().validate(path))
+    def _validate(cls, path, info):
+        expanded = super()._validate(path, info)
+        return os.path.relpath(expanded)
 
 
 class TaskrcPath(ExpandedPath):
     @classmethod
-    def validate(cls, path):
-        expanded_path = super().validate(os.path.normpath(path))
+    def _validate(cls, path, info):
+        expanded_path = super()._validate(os.path.normpath(path), info)
         if not os.path.isfile(expanded_path):
             raise OSError(f"Unable to find taskrc file at {expanded_path}.")
         return expanded_path
@@ -122,27 +156,30 @@ T = typing.TypeVar("T")
 
 class UnsupportedOption(typing.Generic[T]):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            handler(source_type),
+        )
 
     @classmethod
-    def validate(cls, v: T):
+    def _validate(cls, v: T, info):
         if v:
             raise ValueError("Option is unsupported by service.")
         return v
 
 
-class PydanticConfig(pydantic.v1.BaseConfig):
-    allow_mutation = False  # config is faux-immutable
-    extra = "forbid"  # do not allow undeclared fields
-    validate_all = True  # validate default fields
-
-
-class MainSectionConfig(pydantic.v1.BaseModel):
+class MainSectionConfig(BaseModel):
     """The :ref:`common_configuration:Main Section` configuration, plus computed attributes:"""
 
-    class Config(PydanticConfig):
-        arbitrary_types_allowed = True
+    model_config = pydantic.ConfigDict(
+        frozen=True,  # config is faux-immutable
+        extra="forbid",  # do not allow undeclared fields
+        validate_default=True,  # validate default fields
+        arbitrary_types_allowed=True,
+    )
 
     # required
     targets: ConfigList
@@ -155,13 +192,15 @@ class MainSectionConfig(pydantic.v1.BaseModel):
     #: Local data storage.
     data: typing.Optional[BugwarriorData] = None
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def compute_data(cls, values):
-        values["data"] = BugwarriorData(get_data_path(values["taskrc"]))
+        if isinstance(values, dict):
+            values["data"] = BugwarriorData(get_data_path(values["taskrc"]))
         return values
 
     # optional
-    taskrc: TaskrcPath = pydantic.v1.Field(default_factory=TaskrcPath.default_factory)
+    taskrc: TaskrcPath = Field(default_factory=TaskrcPath.default_factory)
     shorten: bool = False
     inline_links: bool = True
     annotation_links: bool = False
@@ -177,39 +216,39 @@ class MainSectionConfig(pydantic.v1.BaseModel):
     reopen_completed_tasks: bool = True
 
     log_level: typing.Literal[
-        ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "DISABLED")
+        "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "DISABLED"
     ] = "INFO"
     log_file: typing.Optional[LoggingPath] = None
 
 
-class Hooks(pydantic.v1.BaseModel):
+class Hooks(BaseModel):
     pre_import: ConfigList = ConfigList([])
 
 
-class Notifications(pydantic.v1.BaseModel):
+class Notifications(BaseModel):
     notifications: bool = False
     # Although upstream supports it, pydantic has problems with Literal[None].
     backend: typing.Optional[
-        typing.Literal[("gobject", "growlnotify", "applescript")]
+        typing.Literal["gobject", "growlnotify", "applescript"]
     ] = None
     finished_querying_sticky: bool = True
     task_crud_sticky: bool = True
     only_on_new_tasks: bool = False
 
 
-class SchemaBase(pydantic.v1.BaseSettings):
-    class Config(PydanticConfig):
-        # Allow extra top-level sections so all targets don't have to be selected.
-        extra = "ignore"
+class SchemaBase(BaseSettings):
+    model_config = pydantic.ConfigDict(
+        extra="ignore"  # Allow extra top-level sections so all targets don't have to be selected.
+    )
 
     hooks: Hooks = Hooks()
     notifications: Notifications = Notifications()
 
 
 class ValidationErrorEnhancedMessages(list):
-    """Methods loosely adapted from pydantic.error_wrappers."""
+    """Methods adapted for pydantic v2."""
 
-    def __init__(self, error: pydantic.v1.ValidationError):
+    def __init__(self, error: ValidationError):
         super().__init__(self.flatten(error))
 
     def __str__(self):
@@ -217,41 +256,24 @@ class ValidationErrorEnhancedMessages(list):
 
     @staticmethod
     def display_error_loc(e):
-        loc_len = len(e["loc"])
-        if loc_len == 1 or e["loc"][1] == "__root__":
-            return f"[{e['loc'][0]}]"
+        loc = e.get("loc", ())
+        loc_len = len(loc)
+        if loc_len == 1 or (loc_len > 1 and loc[1] == "__root__"):
+            return f"[{loc[0]}]"
         elif loc_len == 2:
-            # TODO We should be able to display the value itself:
-            # https://github.com/samuelcolvin/pydantic/issues/784
-            return f"[{e['loc'][0]}]\n{e['loc'][1]}"
+            return f"[{loc[0]}]\n{loc[1]}"
         raise ValueError(
             "Configuration should not be nested more than two layers deep."
         )
 
-    def display_error(self, e, error, model):
-        if e["type"] == "value_error.extra":
+    def display_error(self, e):
+        if e.get("type") == "extra_forbidden":
             e["msg"] = "unrecognized option"
-        return f"{self.display_error_loc(e)}  <- {e['msg']}\n"
+        return f"{self.display_error_loc(e)}  <- {e.get('msg', 'Unknown error')}\n"
 
-    def flatten(self, err, loc=None):
-        for error in err.raw_errors:
-            if isinstance(error, pydantic.v1.error_wrappers.ErrorWrapper):
-                if loc:
-                    error_loc = loc + error.loc_tuple()
-                else:
-                    error_loc = error.loc_tuple()
-
-                if isinstance(error.exc, pydantic.v1.ValidationError):
-                    yield from self.flatten(error.exc, error_loc)
-                else:
-                    e = pydantic.v1.error_wrappers.error_dict(
-                        error.exc, PydanticConfig, error_loc
-                    )
-                    yield self.display_error(e, error, err.model)
-            elif isinstance(error, list):
-                yield from self.flatten(error, loc=loc)
-            else:
-                raise RuntimeError(f"Unknown error object: {error}")
+    def flatten(self, err):
+        for error in err.errors():
+            yield self.display_error(error)
 
 
 def raise_validation_error(msg, config_path, no_errors=1):
@@ -264,10 +286,13 @@ def raise_validation_error(msg, config_path, no_errors=1):
 
 
 def get_target_validator(targets):
-    @pydantic.v1.root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def compute_target(cls, values):
-        for target in targets:
-            values[target]["target"] = target
+        if isinstance(values, dict):
+            for target in targets:
+                if target in values and isinstance(values[target], dict):
+                    values[target]["target"] = target
         return values
 
     return compute_target
@@ -280,7 +305,7 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
     except KeyError:
         raise_validation_error(f"No section: '{main_section}'", config_path)
     try:
-        targets = ConfigList.validate(main["targets"])
+        targets = ConfigList._validate(main["targets"], None)
     except KeyError:
         raise_validation_error(
             f"No option 'targets' in section: '{main_section}'", config_path
@@ -305,24 +330,44 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
     }
 
     # Construct Validation Model
-    bugwarrior_config_model = pydantic.v1.create_model(
-        "bugwarriorrc",
-        __base__=SchemaBase,
-        __validators__={"compute_target": get_target_validator(targets)},
-        general=(MainSectionConfig, ...),
-        flavor={
+    fields = {
+        "general": (MainSectionConfig, ...),
+        **{
             flavor: (MainSectionConfig, ...)
             for flavor in config.get("flavor", {}).values()
         },
         **target_schemas,
-    )
+    }
+
+    # Create dynamic model with target validator
+    compute_target = get_target_validator(targets)
+
+    class BugwarriorConfigModel(SchemaBase):
+        model_config = pydantic.ConfigDict(**SchemaBase.model_config)
+
+        # Apply the target validator
+        @model_validator(mode="before")
+        @classmethod
+        def apply_target_validator(cls, values):
+            return compute_target.__func__(cls, values)
+
+    # Add fields dynamically
+    for name, field_info in fields.items():
+        annotation, default = field_info
+        setattr(BugwarriorConfigModel, name, default)
+        BugwarriorConfigModel.model_fields[name] = Field(default=default)
+        BugwarriorConfigModel.__annotations__[name] = annotation
+
+    # Rebuild the model to incorporate the new fields
+    BugwarriorConfigModel.model_rebuild()
+    bugwarrior_config_model = BugwarriorConfigModel
 
     # Validate
     try:
         # Convert top-level model to dict since target names are dynamic and
         # a bunch of calls to getattr(config, target) inhibits readability.
         return dict(bugwarrior_config_model(**config))
-    except pydantic.v1.ValidationError as e:
+    except ValidationError as e:
         errors = ValidationErrorEnhancedMessages(e)
         raise_validation_error(str(errors), config_path, no_errors=len(errors))
 
@@ -331,9 +376,13 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
 # Include standard taskwarrior fields plus common UDAs
 _TEMPLATE_FIELDS = set(taskw_ng.task.Task.FIELDS.keys()) | {"area"}
 
-_ServiceConfig = pydantic.v1.create_model(
+# Use pydantic's create_model for dynamic fields
+_ServiceConfig = create_model(
     "_ServiceConfig",
-    **{f"{key}_template": (typing.Optional[str], None) for key in _TEMPLATE_FIELDS},
+    **{
+        f"{key}_template": (typing.Optional[str], Field(default=None))
+        for key in _TEMPLATE_FIELDS
+    },
 )
 
 
@@ -343,7 +392,11 @@ class ServiceConfig(_ServiceConfig):  # type: ignore  # (dynamic base class)
     .. _Pydantic: https://docs.pydantic.dev/latest/
     """
 
-    Config = PydanticConfig
+    model_config = ConfigDict(
+        frozen=True,  # config is faux-immutable
+        extra="forbid",  # do not allow undeclared fields
+        validate_default=True,  # validate default fields
+    )
 
     # Added during validation (computed field support will land in pydantic-2)
     templates: dict = {}
@@ -354,9 +407,10 @@ class ServiceConfig(_ServiceConfig):  # type: ignore  # (dynamic base class)
     also_unassigned: bool = False
     default_priority: typing.Literal["", "L", "M", "H"] = "M"
     add_tags: ConfigList = ConfigList([])
-    static_fields = ConfigList([])
+    static_fields: ConfigList = ConfigList([])
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def compute_templates(cls, values):
         """Get any defined templates for configuration values.
 
@@ -384,17 +438,23 @@ class ServiceConfig(_ServiceConfig):  # type: ignore  # (dynamic base class)
         generated issue was.
 
         """
-        for key in _TEMPLATE_FIELDS:
-            template = values.get(f"{key}_template")
-            if template is not None:
-                values["templates"][key] = template
+        if isinstance(values, dict):
+            if "templates" not in values:
+                values["templates"] = {}
+            for key in _TEMPLATE_FIELDS:
+                template = values.get(f"{key}_template")
+                if template is not None:
+                    values["templates"][key] = template
         return values
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def deprecate_filter_merge_requests(cls, values):
-        if hasattr(cls, "_DEPRECATE_FILTER_MERGE_REQUESTS"):
-            if values["filter_merge_requests"] != "Undefined":
-                if values["include_merge_requests"] != "Undefined":
+        if isinstance(values, dict) and hasattr(
+            cls, "_DEPRECATE_FILTER_MERGE_REQUESTS"
+        ):
+            if values.get("filter_merge_requests") != "Undefined":
+                if values.get("include_merge_requests") != "Undefined":
                     raise ValueError(
                         "filter_merge_requests and include_merge_requests are incompatible."
                     )
@@ -402,13 +462,14 @@ class ServiceConfig(_ServiceConfig):  # type: ignore  # (dynamic base class)
                 log.warning(
                     "filter_merge_requests is deprecated in favor of include_merge_requests"
                 )
-            elif values["include_merge_requests"] == "Undefined":
+            elif values.get("include_merge_requests") == "Undefined":
                 values["include_merge_requests"] = True
         return values
 
-    @pydantic.v1.root_validator
+    @model_validator(mode="before")
+    @classmethod
     def deprecate_project_name(cls, values):
-        if hasattr(cls, "_DEPRECATE_PROJECT_NAME"):
-            if values["project_name"] != "":
+        if isinstance(values, dict) and hasattr(cls, "_DEPRECATE_PROJECT_NAME"):
+            if values.get("project_name", "") != "":
                 log.warning("project_name is deprecated in favor of project_template")
         return values
