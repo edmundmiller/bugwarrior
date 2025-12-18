@@ -346,27 +346,30 @@ def validate_config(config: dict, main_section: str, config_path: str) -> dict:
     }
 
     # Create dynamic model with target validator
-    compute_target = get_target_validator(targets)
+    # Use create_model to properly create the dynamic model with all fields
+    model_fields = {}
+    for name, field_info in fields.items():
+        annotation, default = field_info
+        model_fields[name] = (annotation, default)
 
-    class BugwarriorConfigModel(SchemaBase):
+    # Create a base class with the target validator logic
+    class BugwarriorConfigModelBase(SchemaBase):
         model_config = pydantic.ConfigDict(**SchemaBase.model_config)
 
-        # Apply the target validator
+        # Apply the target validator logic directly
         @model_validator(mode="before")
         @classmethod
         def apply_target_validator(cls, values):
-            return compute_target.__func__(cls, values)
+            if isinstance(values, dict):
+                for target in targets:
+                    if target in values and isinstance(values[target], dict):
+                        values[target]["target"] = target
+            return values
 
-    # Add fields dynamically
-    for name, field_info in fields.items():
-        annotation, default = field_info
-        setattr(BugwarriorConfigModel, name, default)
-        BugwarriorConfigModel.model_fields[name] = Field(default=default)
-        BugwarriorConfigModel.__annotations__[name] = annotation
-
-    # Rebuild the model to incorporate the new fields
-    BugwarriorConfigModel.model_rebuild()
-    bugwarrior_config_model = BugwarriorConfigModel
+    # Create the dynamic model with all fields
+    bugwarrior_config_model = create_model(
+        "BugwarriorConfigModel", __base__=BugwarriorConfigModelBase, **model_fields
+    )
 
     # Validate
     try:

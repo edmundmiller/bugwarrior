@@ -493,15 +493,33 @@ def synchronize(issue_generator, conf, main_section, dry_run=False, verbose=Fals
                 # Try to get issue identifier for display
                 issue_id = ""
                 if service == "github" and "githubnumber" in task:
-                    issue_id = f"#{task['githubnumber']}"
+                    number = task["githubnumber"]
+                    # Convert to int if it's a numeric with .0 suffix
+                    if isinstance(number, (int, float)):
+                        issue_id = f"#{int(number)}"
+                    else:
+                        issue_id = f"#{number}"
                 elif service == "jira" and "jiraid" in task:
                     issue_id = task["jiraid"]
                 elif service == "gitlab" and "gitlabnumber" in task:
-                    issue_id = f"#{task['gitlabnumber']}"
+                    number = task["gitlabnumber"]
+                    # Convert to int if it's a numeric with .0 suffix
+                    if isinstance(number, (int, float)):
+                        issue_id = f"#{int(number)}"
+                    else:
+                        issue_id = f"#{number}"
                 elif service == "linear" and "linearidentifier" in task:
                     issue_id = task["linearidentifier"]
 
-                table.add_row(service.upper(), description, issue_id, url)
+                # Make URLs clickable if they are actual URLs
+                if url.startswith(("http://", "https://")):
+                    # Use Rich hyperlink markup for terminal emulators that support it
+                    # Rich automatically handles terminal detection and fallback
+                    clickable_url = f"[link={url}]{url}[/link]"
+                else:
+                    clickable_url = url  # For "(close in service)" messages
+
+                table.add_row(service.upper(), description, issue_id, clickable_url)
 
         console.print()
         console.print(
