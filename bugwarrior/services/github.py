@@ -357,7 +357,18 @@ class GithubService(Service):
 
     def _comments(self, tag, number):
         user, repo = tag.split("/")
-        return self.client.get_comments(user, repo, number)
+        try:
+            return self.client.get_comments(user, repo, number)
+        except OSError as e:
+            if "403" in str(e):
+                log.warning(
+                    "Cannot fetch comments for %s/%s#%s (403 forbidden - org may restrict classic PATs)",
+                    user,
+                    repo,
+                    number,
+                )
+                return []
+            raise
 
     def annotations(self, tag, issue):
         url = issue["html_url"]
