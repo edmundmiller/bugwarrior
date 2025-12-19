@@ -80,7 +80,7 @@ class JiraExtraField:
 
 class JiraConfig(config.ServiceConfig):
     service: typing.Literal["jira"]
-    base_uri: pydantic.AnyUrl
+    base_uri: config.OracleUrl
     username: str
 
     password: str = ""
@@ -378,13 +378,14 @@ class JiraService(Service):
             )
 
         self.sprint_field_names = []
-        if self.config.import_sprints_as_tags:
+        self.import_sprints_as_tags = self.config.import_sprints_as_tags
+        if self.import_sprints_as_tags:
             field_names = [
                 field for field in self.jira.fields() if field["name"] == "Sprint"
             ]
             if len(field_names) < 1:
                 log.warn("No sprint custom field found.  Ignoring sprints.")
-                self.config.import_sprints_as_tags = False
+                self.import_sprints_as_tags = False
             else:
                 log.info("Found %i distinct sprint fields." % len(field_names))
                 self.sprint_field_names = [field["id"] for field in field_names]
