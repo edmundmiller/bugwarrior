@@ -81,7 +81,7 @@ class JiraExtraField:
 class JiraConfig(config.ServiceConfig):
     service: typing.Literal["jira"]
     base_uri: config.OracleUrl
-    username: str
+    username: config.OracleStr
 
     password: str = ""
     PAT: str = ""
@@ -252,8 +252,8 @@ class JiraIssue(Issue):
         # Otherwise, if the issue is in a sprint, use the end date of that sprint.
         sprints = self.__get_sprints()
         for sprint in filter(lambda e: e.get("state", "").lower() != "closed", sprints):
-            endDate = sprint["endDate"]
-            if endDate != "<null>":
+            endDate = sprint.get("endDate")
+            if endDate and endDate != "<null>":
                 return self.parse_date(endDate)
 
     def __get_sprints(self):
@@ -280,7 +280,7 @@ class JiraIssue(Issue):
         return self.record["key"].rsplit("-", 1)[1]
 
     def get_url(self):
-        return self.config.base_uri + "/browse/" + self.record["key"]
+        return str(self.config.base_uri) + "/browse/" + self.record["key"]
 
     def get_summary(self):
         if self.config.version == 4:
@@ -410,7 +410,7 @@ class JiraService(Service):
         )
 
     def issues(self):
-        cases = self.jira.enhanced_search_issues(self.query, maxResults=False)
+        cases = self.jira.search_issues(self.query, maxResults=False)
 
         for case in cases:
             issue = self.get_issue_for_record(

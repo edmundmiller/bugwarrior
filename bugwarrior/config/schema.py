@@ -75,6 +75,33 @@ class OracleUrl(str):
         return value
 
 
+class OracleStr(str):
+    """String type that supports @oracle:eval: prefixed values.
+
+    Evaluates oracle strings before returning, allowing values
+    to be fetched from external commands (e.g., password managers).
+    """
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.with_info_before_validator_function(
+            cls._validate,
+            core_schema.str_schema(),
+        )
+
+    @classmethod
+    def _validate(cls, value, info):
+        if isinstance(value, str):
+            if value.startswith("@oracle:eval:"):
+                from .secrets import oracle_eval
+
+                command = value[13:]  # len("@oracle:eval:") == 13
+                value = oracle_eval(command)
+        return value
+
+
 class NoSchemeUrl(str):
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):

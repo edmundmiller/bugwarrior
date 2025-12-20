@@ -11,6 +11,7 @@ from .schema import (
     LoggingPath,  # noqa: F401
     MainSectionConfig,
     NoSchemeUrl,  # noqa: F401
+    OracleStr,  # noqa: F401
     OracleUrl,  # noqa: F401
     ServiceConfig,
     StrippedTrailingSlashUrl,  # noqa: F401
