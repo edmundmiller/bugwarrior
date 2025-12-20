@@ -226,6 +226,7 @@ class GithubIssue(Issue):
     NAMESPACE = "githubnamespace"
     STATE = "githubstate"
     DRAFT = "githubdraft"
+    REQUESTED_REVIEWERS = "githubrequestedreviewers"
 
     UDAS = {
         TITLE: {"type": "string", "label": "Github Title"},
@@ -242,6 +243,7 @@ class GithubIssue(Issue):
         NAMESPACE: {"type": "string", "label": "Github Namespace"},
         STATE: {"type": "string", "label": "GitHub State"},
         DRAFT: {"type": "numeric", "label": "GitHub Draft"},
+        REQUESTED_REVIEWERS: {"type": "string", "label": "Github Requested Reviewers"},
     }
     UNIQUE_KEY = (URL, TYPE)
 
@@ -275,6 +277,9 @@ class GithubIssue(Issue):
             self.NAMESPACE: self.extra["namespace"],
             self.STATE: self.record.get("state", ""),
             self.DRAFT: int(self.record.get("draft", 0)),
+            self.REQUESTED_REVIEWERS: ",".join(
+                [r["login"] for r in self.record.get("requested_reviewers", [])]
+            ),
         }
 
     def get_tags(self):
